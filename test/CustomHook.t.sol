@@ -12,18 +12,31 @@ import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
 import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {CustomHook} from "../src/CustomHook.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {IERC20Minimal} from "v4-core/interfaces/external/IERC20Minimal.sol";
 
 contract CustomHookTest is Test, Deployers {
     using PoolIdLibrary for PoolId;
     using CurrencyLibrary for Currency;
+    using StateLibrary for IPoolManager;
+
+    MockERC20 token; // our token to use in the ETH-TOKEN pool
+
+    // Native tokens are represented by address(0)
+    Currency ethCurrency = Currency.wrap(address(0));
+    Currency tokenCurrency;
 
     CustomHook hook;
 
     function setUp() public {
         deployFreshManagerAndRouters();
-        (currency0, currency1) = deployMintAndApprove2Currencies();
+
+        token = new MockERC20("Tether", "USDT", 6);
+        tokenCurrency = Currency.wrap(address(token));
+        token.mint(address(this), 1000 ether);
 
         address hookAddress = address(
             uint160(
@@ -37,21 +50,59 @@ contract CustomHookTest is Test, Deployers {
         deployCodeTo("CustomHook.sol", abi.encode(manager), hookAddress);
         hook = CustomHook(hookAddress);
 
-        (key, ) = initPool(currency0, currency1, hook, 3000, SQRT_PRICE_1_1);
+        token.approve(address(swapRouter), type(uint256).max);
+        token.approve(address(modifyLiquidityRouter), type(uint256).max);
 
-        modifyLiquidityRouter.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: -60,
-                tickUpper: 60,
-                liquidityDelta: 100 ether,
-                salt: bytes32(0)
-            }),
-            ZERO_BYTES
+        // Initialize a pool
+        (key, ) = initPool(
+            ethCurrency, // Currency 0 = ETH
+            tokenCurrency, // Currency 1 = TOKEN
+            hook, // Hook Contract
+            3000, // Swap Fees
+            SQRT_PRICE_1_1 // Initial Sqrt(P) value = 1
         );
     }
 
     function test_addLiquidity() public {
         bytes memory hookData = abi.encode(address(this));
+
+        (, int24 currentTick, , ) = manager.getSlot0(key.toId());
+
+        uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
+
+        uint256 ethToAdd = 2 ether;
+        uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
+            sqrtPriceAtTickLower,
+            SQRT_PRICE_1_1,
+            ethToAdd
+        );
+
+        modifyLiquidityRouter.modifyLiquidity{value: ethToAdd}(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: -60,
+                tickUpper: 60,
+                liquidityDelta: int256(uint256(liquidityDelta)),
+                salt: bytes32(0)
+            }),
+            hookData
+        );
+
+        (
+            int24 tickUpper,
+            int24 tickLower,
+            uint128 amount0,
+            uint128 amount1,
+            bool inRange,
+            uint256 nonce,
+            bool exists
+        ) = hook.userPositions(address(this), 0);
+
+        // Now check the exists field
+        assertEq(exists, true, "Position should exist");
+        assertEq(nonce, 0, "Position should exist");
+        assertEq(inRange, true, "Position should be in range");
     }
+
+    function Test_removeLiquiduty() public {}
 }
