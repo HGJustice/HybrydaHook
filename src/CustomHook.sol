@@ -20,6 +20,7 @@ contract CustomHook is BaseHook {
         int24 tickLower;
         uint128 amount0;
         uint128 amount1;
+        uint128 liquidity;
         bool inRange;
         uint256 nonce;
         bool exists;
@@ -31,6 +32,7 @@ contract CustomHook is BaseHook {
     error MustUseDynamicFee();
     error NoHookDataProvided();
     error NoAddressGiven();
+    error InvalidPositionID();
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
@@ -94,6 +96,7 @@ contract CustomHook is BaseHook {
                     tickLower: params.tickLower,
                     amount0: uint128(delta.amount0()),
                     amount1: uint128(delta.amount1()),
+                    liquidity: uint128(uint256(params.liquidityDelta)),
                     inRange: true,
                     nonce: currentUserNonce,
                     exists: true
@@ -105,6 +108,7 @@ contract CustomHook is BaseHook {
                     tickLower: params.tickLower,
                     amount0: uint128(delta.amount0()),
                     amount1: uint128(delta.amount1()),
+                    liquidity: uint128(uint256(params.liquidityDelta)),
                     inRange: false,
                     nonce: currentUserNonce,
                     exists: true
@@ -119,18 +123,52 @@ contract CustomHook is BaseHook {
             userPositions[currentUser][currentUserNonce].amount1 += uint128(
                 delta.amount1()
             );
+            userPositions[currentUser][currentUserNonce].liquidity += uint128(
+                uint256(params.liquidityDelta)
+            );
         }
         return (this.afterAddLiquidity.selector, delta);
     }
 
     function _afterRemoveLiquidity(
         address,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata params,
+        BalanceDelta delta,
         BalanceDelta,
-        BalanceDelta,
-        bytes calldata
-    ) internal override returns (bytes4, BalanceDelta) {}
+        bytes calldata hookData
+    ) internal override returns (bytes4, BalanceDelta) {
+        if (hookData.length == 0) revert NoHookDataProvided();
+        (address currentUser, uint256 positionNonce) = abi.decode(
+            hookData,
+            (address, uint256)
+        );
+        if (currentUser == address(0)) revert NoAddressGiven();
+        uint256 currentUserNonce = nonceCount[currentUser];
+        if (positionNonce >= currentUserNonce) revert InvalidPositionID();
+
+        Position storage currentPosition = userPositions[currentUser][
+            positionNonce
+        ];
+
+        if (currentPosition.exists) {
+            currentPosition.amount0 -= uint128(delta.amount0());
+            currentPosition.amount1 -= uint128(delta.amount1());
+
+            currentPosition.liquidity -= uint128(
+                uint256(-params.liquidityDelta)
+            );
+
+            if (currentPosition.liquidity == 0) {
+                currentPosition.exists = false;
+            }
+            (, int24 currentTick, , ) = poolManager.getSlot0(key.toId());
+            currentPosition.inRange =
+                params.tickLower <= currentTick &&
+                currentTick < params.tickUpper;
+        }
+        return (this.afterRemoveLiquidity.selector, delta);
+    }
 
     function _beforeSwap(
         address,

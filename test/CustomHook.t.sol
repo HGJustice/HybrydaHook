@@ -86,10 +86,8 @@ contract CustomHookTest is Test, Deployers {
             hookData
         );
 
-        (, , , , bool inRange, uint256 nonce, bool exists) = hook.userPositions(
-            address(this),
-            0
-        );
+        (, , , , , bool inRange, uint256 nonce, bool exists) = hook
+            .userPositions(address(this), 0);
 
         assertEq(exists, true, "Position should exist");
         assertEq(nonce, 0, "Nonce should be 0");
@@ -117,7 +115,7 @@ contract CustomHookTest is Test, Deployers {
             hookData
         );
 
-        (, , , , bool inRange2, uint256 nonce2, bool exists2) = hook
+        (, , , , , bool inRange2, uint256 nonce2, bool exists2) = hook
             .userPositions(address(this), 1);
 
         assertEq(exists2, true, "Position should exist");
@@ -125,5 +123,162 @@ contract CustomHookTest is Test, Deployers {
         assertEq(inRange2, false, "Position should not be in range");
     }
 
-    function test_removeLiquidity() public {}
+    function test_partialRemoveLiquidity() public {
+        bytes memory addHookData = abi.encode(address(this));
+        bytes memory removeHookData = abi.encode(address(this), 0);
+
+        // add liquiduty
+        uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
+
+        uint256 ethToAdd = 2 ether;
+        uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
+            sqrtPriceAtTickLower,
+            SQRT_PRICE_1_1,
+            ethToAdd
+        );
+
+        modifyLiquidityRouter.modifyLiquidity{value: ethToAdd}(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: -60,
+                tickUpper: 60,
+                liquidityDelta: int256(uint256(liquidityDelta)),
+                salt: bytes32(0)
+            }),
+            addHookData
+        );
+
+        (
+            ,
+            ,
+            ,
+            uint128 beforeAmount0,
+            uint128 beforeAmount1,
+            bool inRange,
+            uint256 nonce,
+            bool exists
+        ) = hook.userPositions(address(this), 0);
+
+        assertEq(exists, true, "Position should exist");
+        assertEq(nonce, 0, "Nonce should be 0");
+        assertEq(inRange, true, "Position should be in range");
+
+        // remove half of liquiduty
+        uint128 liquidityToRemove = liquidityDelta / 2;
+        uint256 initialEthBalance = address(this).balance; // check user balance before removing
+
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: -60,
+                tickUpper: 60,
+                liquidityDelta: -int256(uint256(liquidityToRemove)), // Negative for removal
+                salt: bytes32(0)
+            }),
+            removeHookData
+        );
+
+        (
+            ,
+            ,
+            ,
+            uint128 afterAmount0,
+            uint128 afterAmount1,
+            ,
+            ,
+            bool existsAfter
+        ) = hook.userPositions(address(this), 0);
+
+        assertEq(
+            existsAfter,
+            true,
+            "Position should still exist after removing partial liquidity"
+        );
+        assertLt(
+            afterAmount0,
+            beforeAmount0,
+            "ETH amount should decrease after partial removal"
+        );
+        assertGt(
+            address(this).balance,
+            initialEthBalance,
+            "ETH balance should increase after removal"
+        );
+    }
+
+    function test_fullRemoveLiquidity() public {
+        bytes memory addHookData = abi.encode(address(this));
+        bytes memory removeHookData = abi.encode(address(this), 0);
+
+        // add liquiduty
+        uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
+
+        uint256 ethToAdd = 2 ether;
+        uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
+            sqrtPriceAtTickLower,
+            SQRT_PRICE_1_1,
+            ethToAdd
+        );
+
+        modifyLiquidityRouter.modifyLiquidity{value: ethToAdd}(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: -60,
+                tickUpper: 60,
+                liquidityDelta: int256(uint256(liquidityDelta)),
+                salt: bytes32(0)
+            }),
+            addHookData
+        );
+
+        (
+            ,
+            ,
+            ,
+            uint128 beforeAmount0,
+            uint128 beforeAmount1,
+            bool inRange,
+            uint256 nonce,
+            bool exists
+        ) = hook.userPositions(address(this), 0);
+
+        assertEq(exists, true, "Position should exist");
+        assertEq(nonce, 0, "Nonce should be 0");
+        assertEq(inRange, true, "Position should be in range");
+
+        uint256 initialEthBalance = address(this).balance; // check user balance before removing
+
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: -60,
+                tickUpper: 60,
+                liquidityDelta: -int256(uint256(liquidityDelta)), // Negative for removal
+                salt: bytes32(0)
+            }),
+            removeHookData
+        );
+
+        (
+            ,
+            ,
+            ,
+            uint128 afterAmount0,
+            uint128 afterAmount1,
+            ,
+            ,
+            bool existsAfter
+        ) = hook.userPositions(address(this), 0);
+
+        assertEq(
+            existsAfter,
+            false,
+            "Position should be marked as non-existent after full removal"
+        );
+        assertGt(
+            address(this).balance,
+            initialEthBalance,
+            "ETH balance should increase after final removal"
+        );
+    }
 }
