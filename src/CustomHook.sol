@@ -10,10 +10,14 @@ import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/types/BeforeSwapDelta.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
+import {FearAndGreedIndexConsumer} from "./FearAndGreedIndexConsumer.sol";
 
-contract CustomHook is BaseHook {
+contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
+    using LPFeeLibrary for uint24;
+
+    uint24 public constant BASE_FEE = 5000;
 
     struct Position {
         int24 tickUpper;
@@ -44,7 +48,7 @@ contract CustomHook is BaseHook {
     {
         return
             Hooks.Permissions({
-                beforeInitialize: false,
+                beforeInitialize: true,
                 afterInitialize: false,
                 beforeAddLiquidity: false,
                 beforeRemoveLiquidity: false,
@@ -61,14 +65,34 @@ contract CustomHook is BaseHook {
             });
     }
 
-    // function _beforeInitialize(
-    //     address,
-    //     PoolKey calldata key,
-    //     uint160
-    // ) internal pure override returns (bytes4) {
-    //     if (!key.fee.isDynamicFee()) revert MustUseDynamicFee();
-    //     return this.beforeInitialize.selector;
-    // }
+    function _beforeInitialize(
+        address,
+        PoolKey calldata key,
+        uint160
+    ) internal pure override returns (bytes4) {
+        if (!key.fee.isDynamicFee()) revert MustUseDynamicFee();
+        return this.beforeInitialize.selector;
+    }
+
+    function getFee() internal view returns (uint24) {
+        uint fearNGreed = index;
+        if (fearNGreed < 20) {
+            // Extreme fear
+            return BASE_FEE * 2;
+        } else if (fearNGreed < 40) {
+            // Fear
+            return (BASE_FEE * 15) / 10;
+        } else if (fearNGreed < 60) {
+            // Neutral
+            return BASE_FEE;
+        } else if (fearNGreed < 80) {
+            // Greed
+            return (BASE_FEE * 15) / 10;
+        } else {
+            // Extreme greed
+            return BASE_FEE * 2;
+        }
+    }
 
     function _afterAddLiquidity(
         address,
@@ -175,7 +199,16 @@ contract CustomHook is BaseHook {
         PoolKey calldata,
         IPoolManager.SwapParams calldata,
         bytes calldata
-    ) internal view override returns (bytes4, BeforeSwapDelta, uint24) {}
+    ) internal view override returns (bytes4, BeforeSwapDelta, uint24) {
+        uint24 fee = getFee();
+
+        uint24 feeWithFlag = fee | LPFeeLibrary.OVERRIDE_FEE_FLAG;
+        return (
+            this.beforeSwap.selector,
+            BeforeSwapDeltaLibrary.ZERO_DELTA,
+            feeWithFlag
+        );
+    }
 
     function _afterSwap(
         address,

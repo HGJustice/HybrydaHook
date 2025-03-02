@@ -10,18 +10,18 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
-import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {CustomHook} from "../src/CustomHook.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
-import {IERC20Minimal} from "v4-core/interfaces/external/IERC20Minimal.sol";
+import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 
 contract CustomHookTest is Test, Deployers {
     using PoolIdLibrary for PoolId;
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
+    using LPFeeLibrary for uint24;
 
     MockERC20 token;
 
@@ -39,7 +39,8 @@ contract CustomHookTest is Test, Deployers {
 
         address hookAddress = address(
             uint160(
-                Hooks.AFTER_ADD_LIQUIDITY_FLAG |
+                Hooks.BEFORE_INITIALIZE_FLAG |
+                    Hooks.AFTER_ADD_LIQUIDITY_FLAG |
                     Hooks.AFTER_REMOVE_LIQUIDITY_FLAG |
                     Hooks.BEFORE_SWAP_FLAG |
                     Hooks.AFTER_SWAP_FLAG |
@@ -52,13 +53,12 @@ contract CustomHookTest is Test, Deployers {
         token.approve(address(swapRouter), type(uint256).max);
         token.approve(address(modifyLiquidityRouter), type(uint256).max);
 
-        // Initialize a pool
         (key, ) = initPool(
-            ethCurrency, // Currency 0 = ETH
-            tokenCurrency, // Currency 1 = TOKEN
-            hook, // Hook Contract
-            3000, // Swap Fees
-            SQRT_PRICE_1_1 // Initial Sqrt(P) value = 1
+            ethCurrency,
+            tokenCurrency,
+            hook,
+            LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            SQRT_PRICE_1_1 // 1 for 1 ratio of both coins in pool
         );
     }
 
@@ -246,29 +246,20 @@ contract CustomHookTest is Test, Deployers {
         assertEq(nonce, 0, "Nonce should be 0");
         assertEq(inRange, true, "Position should be in range");
 
-        uint256 initialEthBalance = address(this).balance; // check user balance before removing
-
+        uint256 initialEthBalance = address(this).balance;
+        //remove all liquiduty and check bool
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
                 tickUpper: 60,
-                liquidityDelta: -int256(uint256(liquidityDelta)), // Negative for removal
+                liquidityDelta: -int256(uint256(liquidityDelta)),
                 salt: bytes32(0)
             }),
             removeHookData
         );
 
-        (
-            ,
-            ,
-            ,
-            uint128 afterAmount0,
-            uint128 afterAmount1,
-            ,
-            ,
-            bool existsAfter
-        ) = hook.userPositions(address(this), 0);
+        (, , , , , , , bool existsAfter) = hook.userPositions(address(this), 0);
 
         assertEq(
             existsAfter,
