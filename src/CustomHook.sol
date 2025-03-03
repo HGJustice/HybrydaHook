@@ -199,7 +199,9 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         PoolKey calldata,
         IPoolManager.SwapParams calldata,
         bytes calldata
-    ) internal view override returns (bytes4, BeforeSwapDelta, uint24) {
+    ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
+        // find the inRange positions and out of range positons
+
         uint24 fee = getFee();
 
         uint24 feeWithFlag = fee | LPFeeLibrary.OVERRIDE_FEE_FLAG;
@@ -216,5 +218,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         IPoolManager.SwapParams calldata,
         BalanceDelta,
         bytes calldata
-    ) internal override returns (bytes4, int128) {}
+    ) internal override returns (bytes4, int128) {
+        return (this.afterSwap.selector, 0);
+    }
 }

@@ -17,7 +17,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 
-contract CustomHookTest is Test, Deployers {
+contract CustomCurveTest is Test, Deployers {
     using PoolIdLibrary for PoolId;
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
