@@ -11,27 +11,36 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/types/BeforeSwapD
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {FearAndGreedIndexConsumer} from "./FearAndGreedIndexConsumer.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
     using LPFeeLibrary for uint24;
+    using EnumerableSet for EnumerableSet.UintSet;
 
     uint24 public constant BASE_FEE = 5000;
 
     struct Position {
+        uint256 poiitionID;
         int24 tickUpper;
         int24 tickLower;
         uint128 amount0;
         uint128 amount1;
         uint128 liquidity;
-        bool inRange;
         uint256 nonce;
         bool exists;
+        uint256 index;
     }
+
+    uint128 public totalLiquidity = 0;
+    uint256 public currentPositionID = 1;
 
     mapping(address => mapping(uint256 => Position)) public userPositions;
     mapping(address => uint256) public nonceCount;
+
+    EnumerableSet.UintSet private inRangePositionIDs;
+    EnumerableSet.UintSet private outOfRangePositionIDs;
 
     error MustUseDynamicFee();
     error NoHookDataProvided();
@@ -115,30 +124,38 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                 currentTick < params.tickUpper;
             if (inRange) {
                 // if in range give bool true
-                userPositions[currentUser][currentUserNonce] = Position({
+                uint256 currentIndex = inRangePositionIDs.length();
+                Position memory newPosition = Position({
+                    poiitionID: currentPositionID,
                     tickUpper: params.tickUpper,
                     tickLower: params.tickLower,
                     amount0: uint128(delta.amount0()),
                     amount1: uint128(delta.amount1()),
                     liquidity: uint128(uint256(params.liquidityDelta)),
-                    inRange: true,
                     nonce: currentUserNonce,
-                    exists: true
+                    exists: true,
+                    index: currentIndex
                 });
+                userPositions[currentUser][currentUserNonce] = newPosition;
             } else {
                 // else not
-                userPositions[currentUser][currentUserNonce] = Position({
+                uint256 currentIndex = outOfRangePositionIDs.length();
+                Position memory newPosition = Position({
+                    poiitionID: currentPositionID,
                     tickUpper: params.tickUpper,
                     tickLower: params.tickLower,
                     amount0: uint128(delta.amount0()),
                     amount1: uint128(delta.amount1()),
                     liquidity: uint128(uint256(params.liquidityDelta)),
-                    inRange: false,
                     nonce: currentUserNonce,
-                    exists: true
+                    exists: true,
+                    index: currentIndex
                 });
+                outOfRangePositionIDs.add(newPosition);
+                userPositions[currentUser][currentUserNonce] = newPosition;
             }
             nonceCount[currentUser] = currentUserNonce + 1;
+            currentPositionID++;
         } else {
             // laslty if user just adding to current position just add liquiuduty
             userPositions[currentUser][currentUserNonce].amount0 += uint128(
@@ -202,6 +219,12 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
         // find the inRange positions and out of range positons
 
+        // get the total amount of liquidity of the pool and devidiie it to chech. so 40% owns in range liq atm, and 60% out of range liq
+
+        // get the swap fee and split it accordinig to the % of total liq owned
+
+        // for the 40% in range apply the fear n greed distro
+
         uint24 fee = getFee();
 
         uint24 feeWithFlag = fee | LPFeeLibrary.OVERRIDE_FEE_FLAG;
@@ -210,6 +233,8 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
             BeforeSwapDeltaLibrary.ZERO_DELTA,
             feeWithFlag
         );
+
+        // for 60% use the uniswap v1 algo
     }
 
     function _afterSwap(
@@ -219,6 +244,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         BalanceDelta,
         bytes calldata
     ) internal override returns (bytes4, int128) {
+        // check in range positions after swap as tick has moved
         return (this.afterSwap.selector, 0);
     }
 }
