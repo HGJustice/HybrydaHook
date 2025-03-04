@@ -11,36 +11,33 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/types/BeforeSwapD
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {FearAndGreedIndexConsumer} from "./FearAndGreedIndexConsumer.sol";
-import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
     using LPFeeLibrary for uint24;
-    using EnumerableSet for EnumerableSet.UintSet;
 
     uint24 public constant BASE_FEE = 5000;
 
     struct Position {
-        uint256 poiitionID;
         int24 tickUpper;
         int24 tickLower;
         uint128 amount0;
         uint128 amount1;
         uint128 liquidity;
+        bool inRange;
         uint256 nonce;
         bool exists;
         uint256 index;
     }
 
     uint128 public totalLiquidity = 0;
-    uint256 public currentPositionID = 1;
 
     mapping(address => mapping(uint256 => Position)) public userPositions;
     mapping(address => uint256) public nonceCount;
 
-    EnumerableSet.UintSet private inRangePositionIDs;
-    EnumerableSet.UintSet private outOfRangePositionIDs;
+    Position[] public inRangePositionIDs;
+    Position[] public outOfRangePositionIDs;
 
     error MustUseDynamicFee();
     error NoHookDataProvided();
@@ -124,38 +121,39 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                 currentTick < params.tickUpper;
             if (inRange) {
                 // if in range give bool true
-                uint256 currentIndex = inRangePositionIDs.length();
+                uint256 currentIndex = inRangePositionIDs.length;
                 Position memory newPosition = Position({
-                    poiitionID: currentPositionID,
                     tickUpper: params.tickUpper,
                     tickLower: params.tickLower,
                     amount0: uint128(delta.amount0()),
                     amount1: uint128(delta.amount1()),
                     liquidity: uint128(uint256(params.liquidityDelta)),
                     nonce: currentUserNonce,
+                    inRange: true,
                     exists: true,
                     index: currentIndex
                 });
+                inRangePositionIDs.push(newPosition);
                 userPositions[currentUser][currentUserNonce] = newPosition;
             } else {
                 // else not
-                uint256 currentIndex = outOfRangePositionIDs.length();
+                uint256 currentIndex = outOfRangePositionIDs.length;
                 Position memory newPosition = Position({
-                    poiitionID: currentPositionID,
                     tickUpper: params.tickUpper,
                     tickLower: params.tickLower,
                     amount0: uint128(delta.amount0()),
                     amount1: uint128(delta.amount1()),
                     liquidity: uint128(uint256(params.liquidityDelta)),
+                    inRange: false,
                     nonce: currentUserNonce,
                     exists: true,
                     index: currentIndex
                 });
-                outOfRangePositionIDs.add(newPosition);
+                outOfRangePositionIDs.push(newPosition);
                 userPositions[currentUser][currentUserNonce] = newPosition;
             }
             nonceCount[currentUser] = currentUserNonce + 1;
-            currentPositionID++;
+            totalLiquidity += uint128(uint256(params.liquidityDelta));
         } else {
             // laslty if user just adding to current position just add liquiuduty
             userPositions[currentUser][currentUserNonce].amount0 += uint128(
@@ -203,10 +201,11 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
             if (currentPosition.liquidity == 0) {
                 currentPosition.exists = false;
             }
-            (, int24 currentTick, , ) = poolManager.getSlot0(key.toId());
-            currentPosition.inRange =
-                params.tickLower <= currentTick &&
-                currentTick < params.tickUpper;
+            // (, int24 currentTick, , ) = poolManager.getSlot0(key.toId());
+            // bool inRange = params.tickLower <= currentTick &&
+            //     currentTick < params.tickUpper;
+
+            // if (inRange) {}
         }
         return (this.afterRemoveLiquidity.selector, delta);
     }
@@ -217,11 +216,14 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         IPoolManager.SwapParams calldata,
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-        // find the inRange positions and out of range positons
+        // find the inRange positions and out of range positons at this moment in time
 
-        // get the total amount of liquidity of the pool and devidiie it to chech. so 40% owns in range liq atm, and 60% out of range liq
+        // get the total amount of liquidity of the pool and divide it to check ownership %,
+        // so 40% owns in-range liquidity atm, and 60% out of range liquidity
 
-        // get the swap fee and split it accordinig to the % of total liq owned
+        // get the base swap fee and split it accordinig to the % of total liquidity owned
+
+        // so for 60% of the base fee, use the uniswap v1 algo
 
         // for the 40% in range apply the fear n greed distro
 
@@ -233,8 +235,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
             BeforeSwapDeltaLibrary.ZERO_DELTA,
             feeWithFlag
         );
-
-        // for 60% use the uniswap v1 algo
     }
 
     function _afterSwap(

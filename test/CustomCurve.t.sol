@@ -86,7 +86,7 @@ contract CustomCurveTest is Test, Deployers {
             hookData
         );
 
-        (, , , , , bool inRange, uint256 nonce, bool exists) = hook
+        (, , , , , bool inRange, uint256 nonce, bool exists, ) = hook
             .userPositions(address(this), 0);
 
         assertEq(exists, true, "Position should exist");
@@ -115,7 +115,7 @@ contract CustomCurveTest is Test, Deployers {
             hookData
         );
 
-        (, , , , , bool inRange2, uint256 nonce2, bool exists2) = hook
+        (, , , , , bool inRange2, uint256 nonce2, bool exists2, ) = hook
             .userPositions(address(this), 1);
 
         assertEq(exists2, true, "Position should exist");
@@ -156,7 +156,8 @@ contract CustomCurveTest is Test, Deployers {
             uint128 beforeAmount1,
             bool inRange,
             uint256 nonce,
-            bool exists
+            bool exists,
+
         ) = hook.userPositions(address(this), 0);
 
         assertEq(exists, true, "Position should exist");
@@ -186,7 +187,8 @@ contract CustomCurveTest is Test, Deployers {
             uint128 afterAmount1,
             ,
             ,
-            bool existsAfter
+            bool existsAfter,
+
         ) = hook.userPositions(address(this), 0);
 
         assertEq(
@@ -239,7 +241,8 @@ contract CustomCurveTest is Test, Deployers {
             uint128 beforeAmount1,
             bool inRange,
             uint256 nonce,
-            bool exists
+            bool exists,
+
         ) = hook.userPositions(address(this), 0);
 
         assertEq(exists, true, "Position should exist");
@@ -259,7 +262,10 @@ contract CustomCurveTest is Test, Deployers {
             removeHookData
         );
 
-        (, , , , , , , bool existsAfter) = hook.userPositions(address(this), 0);
+        (, , , , , , , bool existsAfter, ) = hook.userPositions(
+            address(this),
+            0
+        );
 
         assertEq(
             existsAfter,
