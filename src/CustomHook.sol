@@ -31,13 +31,15 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         uint256 index;
     }
 
-    uint128 public totalLiquidity = 0;
+    uint128 public inRangeLiquidity = 0;
+    uint128 public outRangeLiquidity = 0;
 
     mapping(address => mapping(uint256 => Position)) public userPositions;
     mapping(address => uint256) public nonceCount;
+    mapping(address => uint256) public outOfRangeFees;
 
-    Position[] public inRangePositionIDs;
-    Position[] public outOfRangePositionIDs;
+    Position[] public inRangePositions;
+    Position[] public outOfRangePositions;
 
     error MustUseDynamicFee();
     error NoHookDataProvided();
@@ -121,7 +123,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                 currentTick < params.tickUpper;
             if (inRange) {
                 // if in range give bool true
-                uint256 currentIndex = inRangePositionIDs.length;
+                uint256 currentIndex = inRangePositions.length;
                 Position memory newPosition = Position({
                     tickUpper: params.tickUpper,
                     tickLower: params.tickLower,
@@ -133,11 +135,12 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                     exists: true,
                     index: currentIndex
                 });
-                inRangePositionIDs.push(newPosition);
+                inRangePositions.push(newPosition);
                 userPositions[currentUser][currentUserNonce] = newPosition;
+                inRangeLiquidity += uint128(uint256(params.liquidityDelta));
             } else {
                 // else not
-                uint256 currentIndex = outOfRangePositionIDs.length;
+                uint256 currentIndex = outOfRangePositions.length;
                 Position memory newPosition = Position({
                     tickUpper: params.tickUpper,
                     tickLower: params.tickLower,
@@ -149,11 +152,11 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                     exists: true,
                     index: currentIndex
                 });
-                outOfRangePositionIDs.push(newPosition);
+                outOfRangePositions.push(newPosition);
                 userPositions[currentUser][currentUserNonce] = newPosition;
+                outRangeLiquidity += uint128(uint256(params.liquidityDelta));
             }
             nonceCount[currentUser] = currentUserNonce + 1;
-            totalLiquidity += uint128(uint256(params.liquidityDelta));
         } else {
             // laslty if user just adding to current position just add liquiuduty
             userPositions[currentUser][currentUserNonce].amount0 += uint128(
@@ -171,7 +174,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
 
     function _afterRemoveLiquidity(
         address,
-        PoolKey calldata key,
+        PoolKey calldata,
         IPoolManager.ModifyLiquidityParams calldata params,
         BalanceDelta delta,
         BalanceDelta,
@@ -198,6 +201,12 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                 uint256(-params.liquidityDelta)
             );
 
+            if (currentPosition.inRange) {
+                inRangeLiquidity -= uint128(uint256(-params.liquidityDelta));
+            } else {
+                outRangeLiquidity -= uint128(uint256(-params.liquidityDelta));
+            }
+
             if (currentPosition.liquidity == 0) {
                 currentPosition.exists = false;
             }
@@ -216,16 +225,16 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         IPoolManager.SwapParams calldata,
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-        // find the inRange positions and out of range positons at this moment in time
+        // find the inRange positions and out of range positons at this moment in time via state arrays
 
-        // get the total amount of liquidity of the pool and divide it to check ownership %,
         // so 40% owns in-range liquidity atm, and 60% out of range liquidity
 
         // get the base swap fee and split it accordinig to the % of total liquidity owned
+        (uint256 inRangeFee, uint256 outRangeFee) = calculateFeeSplit();
+        // so for 60% of the base fee, use the uniswap v1 algo and distrobute fees, mint ownership token
+        //to users for the fees?
 
-        // so for 60% of the base fee, use the uniswap v1 algo
-
-        // for the 40% in range apply the fear n greed distro
+        // for the 40% in range apply the fear n greed fee rate and return?
 
         uint24 fee = getFee();
 
@@ -235,6 +244,27 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
             BeforeSwapDeltaLibrary.ZERO_DELTA,
             feeWithFlag
         );
+    }
+
+    function calculateFeeSplit()
+        internal
+        view
+        returns (uint24 inRangeFee, uint24 outRangeFee)
+    {
+        uint128 totalLiq = inRangeLiquidity + outRangeLiquidity;
+
+        if (totalLiq == 0) {
+            return (0, 0);
+        }
+
+        uint256 inRangePercentage = (uint256(inRangeLiquidity) * 10000) /
+            uint256(totalLiq);
+        uint256 outRangePercentage = 10000 - inRangePercentage;
+
+        inRangeFee = uint24((uint256(BASE_FEE) * inRangePercentage) / 10000);
+        outRangeFee = uint24((uint256(BASE_FEE) * outRangePercentage) / 10000);
+
+        return (inRangeFee, outRangeFee);
     }
 
     function _afterSwap(
