@@ -28,7 +28,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         bool inRange;
         uint256 nonce;
         bool exists;
-        uint256 index;
+        address owner;
     }
 
     uint128 public inRangeLiquidity = 0;
@@ -45,6 +45,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
     error NoHookDataProvided();
     error NoAddressGiven();
     error InvalidPositionID();
+    error NotOwner();
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
@@ -82,23 +83,23 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         return this.beforeInitialize.selector;
     }
 
-    function getFee() internal view returns (uint24) {
+    function getFearNGreedFee(uint24 feeAmount) internal view returns (uint24) {
         uint fearNGreed = index;
         if (fearNGreed < 20) {
             // Extreme fear
-            return BASE_FEE * 2;
+            return feeAmount * 2;
         } else if (fearNGreed < 40) {
             // Fear
-            return (BASE_FEE * 15) / 10;
+            return (feeAmount * 15) / 10;
         } else if (fearNGreed < 60) {
             // Neutral
-            return BASE_FEE;
+            return feeAmount;
         } else if (fearNGreed < 80) {
             // Greed
-            return (BASE_FEE * 15) / 10;
+            return (feeAmount * 15) / 10;
         } else {
             // Extreme greed
-            return BASE_FEE * 2;
+            return feeAmount * 2;
         }
     }
 
@@ -123,7 +124,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                 currentTick < params.tickUpper;
             if (inRange) {
                 // if in range give bool true
-                uint256 currentIndex = inRangePositions.length;
                 Position memory newPosition = Position({
                     tickUpper: params.tickUpper,
                     tickLower: params.tickLower,
@@ -133,14 +133,13 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                     nonce: currentUserNonce,
                     inRange: true,
                     exists: true,
-                    index: currentIndex
+                    owner: currentUser
                 });
                 inRangePositions.push(newPosition);
                 userPositions[currentUser][currentUserNonce] = newPosition;
                 inRangeLiquidity += uint128(uint256(params.liquidityDelta));
             } else {
                 // else not
-                uint256 currentIndex = outOfRangePositions.length;
                 Position memory newPosition = Position({
                     tickUpper: params.tickUpper,
                     tickLower: params.tickLower,
@@ -150,7 +149,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                     inRange: false,
                     nonce: currentUserNonce,
                     exists: true,
-                    index: currentIndex
+                    owner: currentUser
                 });
                 outOfRangePositions.push(newPosition);
                 userPositions[currentUser][currentUserNonce] = newPosition;
@@ -226,17 +225,23 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
         // find the inRange positions and out of range positons at this moment in time via state arrays
-
+        Position[] memory outRangeUsers = outOfRangePositions;
         // so 40% owns in-range liquidity atm, and 60% out of range liquidity
 
         // get the base swap fee and split it accordinig to the % of total liquidity owned
-        (uint256 inRangeFee, uint256 outRangeFee) = calculateFeeSplit();
-        // so for 60% of the base fee, use the uniswap v1 algo and distrobute fees, mint ownership token
-        //to users for the fees?
-
+        (uint24 inRangeFee, uint24 outRangeFee) = calculateFeeSplit();
+        // so for out of range 60% of the base fee, we keep that amount in pool manager
+        // and add ownership to mapping?
+        for (uint i = 0; i < outRangeUsers.length; i++) {
+            // Calculate share based on proportion of liquidity
+            Position memory position = outRangeUsers[i];
+            uint256 share = (uint256(position.liquidity) *
+                uint256(outRangeFee)) / uint256(outRangeLiquidity);
+            outOfRangeFees[position.owner] += share;
+        }
         // for the 40% in range apply the fear n greed fee rate and return?
 
-        uint24 fee = getFee();
+        uint24 fee = getFearNGreedFee(inRangeFee);
 
         uint24 feeWithFlag = fee | LPFeeLibrary.OVERRIDE_FEE_FLAG;
         return (
@@ -267,14 +272,60 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         return (inRangeFee, outRangeFee);
     }
 
+    function claimFees() external {
+        // check if person claiming is owner
+        uint256 fees = outOfRangeFees[msg.sender];
+        // allow to take x amount form pool manager to send to user??
+    }
+
     function _afterSwap(
         address,
-        PoolKey calldata,
+        PoolKey calldata key,
         IPoolManager.SwapParams calldata,
         BalanceDelta,
         bytes calldata
     ) internal override returns (bytes4, int128) {
-        // check in range positions after swap as tick has moved
+        (, int24 currentTick, , ) = poolManager.getSlot0(key.toId());
+        Position[] storage outRangeUsers = outOfRangePositions;
+        Position[] storage inRangeUsers = inRangePositions;
+        //check inRange positions
+        for (uint i = 0; i < inRangeUsers.length; i++) {
+            Position storage currentPositon = inRangeUsers[i];
+            if (
+                currentPositon.exists &&
+                (currentTick < currentPositon.tickLower ||
+                    currentTick >= currentPositon.tickUpper)
+            ) {
+                currentPositon.inRange = false;
+                outRangeUsers.push(currentPositon);
+
+                inRangeLiquidity -= currentPositon.liquidity;
+                outRangeLiquidity += currentPositon.liquidity;
+
+                inRangeUsers[i] = inRangeUsers[inRangeUsers.length - 1];
+                inRangeUsers.pop();
+                i--;
+            }
+        }
+        //check outRange positions
+        for (uint i = 0; i < outRangeUsers.length; i++) {
+            Position storage currentPosition = outRangeUsers[i];
+            if (
+                currentPosition.exists &&
+                (currentPosition.tickLower <= currentTick &&
+                    currentTick < currentPosition.tickUpper)
+            ) {
+                currentPosition.inRange = true;
+                inRangeUsers.push(currentPosition);
+
+                outRangeLiquidity -= currentPosition.liquidity;
+                inRangeLiquidity += currentPosition.liquidity;
+
+                outRangeUsers[i] = outRangeUsers[outRangeUsers.length - 1];
+                outRangeUsers.pop();
+                i--;
+            }
+        }
         return (this.afterSwap.selector, 0);
     }
 }
