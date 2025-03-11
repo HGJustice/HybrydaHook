@@ -7,7 +7,7 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
-import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/types/BeforeSwapDelta.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary, toBeforeSwapDelta} from "v4-core/types/BeforeSwapDelta.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {FearAndGreedIndexConsumer} from "./FearAndGreedIndexConsumer.sol";
@@ -209,11 +209,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
             if (currentPosition.liquidity == 0) {
                 currentPosition.exists = false;
             }
-            // (, int24 currentTick, , ) = poolManager.getSlot0(key.toId());
-            // bool inRange = params.tickLower <= currentTick &&
-            //     currentTick < params.tickUpper;
-
-            // if (inRange) {}
         }
         return (this.afterRemoveLiquidity.selector, delta);
     }
@@ -221,34 +216,43 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
     function _beforeSwap(
         address,
         PoolKey calldata,
-        IPoolManager.SwapParams calldata,
+        IPoolManager.SwapParams calldata params,
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-        // find the inRange positions and out of range positons at this moment in time via state arrays
-        Position[] memory outRangeUsers = outOfRangePositions;
-        // so 40% owns in-range liquidity atm, and 60% out of range liquidity
-
-        // get the base swap fee and split it accordinig to the % of total liquidity owned
         (uint24 inRangeFee, uint24 outRangeFee) = calculateFeeSplit();
-        // so for out of range 60% of the base fee, we keep that amount in pool manager
-        // and add ownership to mapping?
-        for (uint i = 0; i < outRangeUsers.length; i++) {
-            // Calculate share based on proportion of liquidity
-            Position memory position = outRangeUsers[i];
-            uint256 share = (uint256(position.liquidity) *
-                uint256(outRangeFee)) / uint256(outRangeLiquidity);
-            outOfRangeFees[position.owner] += share;
+        uint24 adjustedInRangeFee = getFearNGreedFee(inRangeFee);
+
+        uint24 feeWithFlag = adjustedInRangeFee |
+            LPFeeLibrary.OVERRIDE_FEE_FLAG;
+        int128 deltaAmount;
+
+        if (params.zeroForOne) {
+            uint256 inputAmount = uint256(
+                params.amountSpecified < 0
+                    ? -params.amountSpecified
+                    : params.amountSpecified
+            );
+            uint256 feeAmount = (inputAmount * uint256(outRangeFee)) / 1000000;
+            deltaAmount = int128(uint128(feeAmount));
+        } else {
+            uint256 inputAmount = uint256(
+                params.amountSpecified < 0
+                    ? -params.amountSpecified
+                    : params.amountSpecified
+            );
+            uint256 feeAmount = (inputAmount * uint256(outRangeFee)) / 1000000;
+            deltaAmount = int128(uint128(feeAmount));
         }
-        // for the 40% in range apply the fear n greed fee rate and return?
 
-        uint24 fee = getFearNGreedFee(inRangeFee);
-
-        uint24 feeWithFlag = fee | LPFeeLibrary.OVERRIDE_FEE_FLAG;
-        return (
-            this.beforeSwap.selector,
-            BeforeSwapDeltaLibrary.ZERO_DELTA,
-            feeWithFlag
-        );
+        BeforeSwapDelta delta;
+        if (params.zeroForOne) {
+            // If swapping token0 for token1, we take some token0 (specified token)
+            delta = toBeforeSwapDelta(deltaAmount, 0);
+        } else {
+            // If swapping token1 for token0, we take some token1 (specified token)
+            delta = toBeforeSwapDelta(0, deltaAmount);
+        }
+        return (this.beforeSwap.selector, delta, feeWithFlag);
     }
 
     function calculateFeeSplit()
