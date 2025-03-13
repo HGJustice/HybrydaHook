@@ -91,8 +91,10 @@ contract FeesCollected is Test, Deployers {
             hookData
         );
 
-        (, , , , , bool inRange, uint256 nonce, bool exists, ) = hook
-            .userPositions(address(this), 0);
+        (, , , bool inRange, uint256 nonce, bool exists, ) = hook.userPositions(
+            address(this),
+            0
+        );
 
         assertEq(exists, true, "Position should exist");
         assertEq(nonce, 0, "Nonce should be 0");

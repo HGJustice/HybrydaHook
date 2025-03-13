@@ -86,8 +86,10 @@ contract TrackingPositionsTest is Test, Deployers {
             hookData
         );
 
-        (, , , , , bool inRange, uint256 nonce, bool exists, ) = hook
-            .userPositions(address(this), 0);
+        (, , , bool inRange, uint256 nonce, bool exists, ) = hook.userPositions(
+            address(this),
+            0
+        );
 
         assertEq(exists, true, "Position should exist");
         assertEq(nonce, 0, "Nonce should be 0");
@@ -115,7 +117,7 @@ contract TrackingPositionsTest is Test, Deployers {
             hookData
         );
 
-        (, , , , , bool inRange2, uint256 nonce2, bool exists2, ) = hook
+        (, , , bool inRange2, uint256 nonce2, bool exists2, ) = hook
             .userPositions(address(this), 1);
 
         assertEq(exists2, true, "Position should exist");
@@ -148,17 +150,10 @@ contract TrackingPositionsTest is Test, Deployers {
             addHookData
         );
 
-        (
-            ,
-            ,
-            ,
-            uint128 beforeAmount0,
-            uint128 beforeAmount1,
-            bool inRange,
-            uint256 nonce,
-            bool exists,
-
-        ) = hook.userPositions(address(this), 0);
+        (, , , bool inRange, uint256 nonce, bool exists, ) = hook.userPositions(
+            address(this),
+            0
+        );
 
         assertEq(exists, true, "Position should exist");
         assertEq(nonce, 0, "Nonce should be 0");
@@ -179,28 +174,14 @@ contract TrackingPositionsTest is Test, Deployers {
             removeHookData
         );
 
-        (
-            ,
-            ,
-            ,
-            uint128 afterAmount0,
-            uint128 afterAmount1,
-            ,
-            ,
-            bool existsAfter,
-
-        ) = hook.userPositions(address(this), 0);
+        (, , , , , bool existsAfter, ) = hook.userPositions(address(this), 0);
 
         assertEq(
             existsAfter,
             true,
             "Position should still exist after removing partial liquidity"
         );
-        assertLt(
-            afterAmount0,
-            beforeAmount0,
-            "ETH amount should decrease after partial removal"
-        );
+
         assertGt(
             address(this).balance,
             initialEthBalance,
@@ -233,17 +214,10 @@ contract TrackingPositionsTest is Test, Deployers {
             addHookData
         );
 
-        (
-            ,
-            ,
-            ,
-            uint128 beforeAmount0,
-            uint128 beforeAmount1,
-            bool inRange,
-            uint256 nonce,
-            bool exists,
-
-        ) = hook.userPositions(address(this), 0);
+        (, , , bool inRange, uint256 nonce, bool exists, ) = hook.userPositions(
+            address(this),
+            0
+        );
 
         assertEq(exists, true, "Position should exist");
         assertEq(nonce, 0, "Nonce should be 0");
@@ -262,10 +236,7 @@ contract TrackingPositionsTest is Test, Deployers {
             removeHookData
         );
 
-        (, , , , , , , bool existsAfter, ) = hook.userPositions(
-            address(this),
-            0
-        );
+        (, , , , , bool existsAfter, ) = hook.userPositions(address(this), 0);
 
         assertEq(
             existsAfter,

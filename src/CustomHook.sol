@@ -22,8 +22,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
     struct Position {
         int24 tickUpper;
         int24 tickLower;
-        uint128 amount0;
-        uint128 amount1;
         uint128 liquidity;
         bool inRange;
         uint256 nonce;
@@ -127,8 +125,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                 Position memory newPosition = Position({
                     tickUpper: params.tickUpper,
                     tickLower: params.tickLower,
-                    amount0: uint128(delta.amount0()),
-                    amount1: uint128(delta.amount1()),
                     liquidity: uint128(uint256(params.liquidityDelta)),
                     nonce: currentUserNonce,
                     inRange: true,
@@ -143,8 +139,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                 Position memory newPosition = Position({
                     tickUpper: params.tickUpper,
                     tickLower: params.tickLower,
-                    amount0: uint128(delta.amount0()),
-                    amount1: uint128(delta.amount1()),
                     liquidity: uint128(uint256(params.liquidityDelta)),
                     inRange: false,
                     nonce: currentUserNonce,
@@ -158,12 +152,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
             nonceCount[currentUser] = currentUserNonce + 1;
         } else {
             // laslty if user just adding to current position just add liquiuduty
-            userPositions[currentUser][currentUserNonce].amount0 += uint128(
-                delta.amount0()
-            );
-            userPositions[currentUser][currentUserNonce].amount1 += uint128(
-                delta.amount1()
-            );
             userPositions[currentUser][currentUserNonce].liquidity += uint128(
                 uint256(params.liquidityDelta)
             );
@@ -193,9 +181,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         ];
 
         if (currentPosition.exists) {
-            currentPosition.amount0 -= uint128(delta.amount0());
-            currentPosition.amount1 -= uint128(delta.amount1());
-
             currentPosition.liquidity -= uint128(
                 uint256(-params.liquidityDelta)
             );
@@ -271,7 +256,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         uint256 outRangePercentage = 10000 - inRangePercentage;
 
         inRangeFee = uint24((uint256(BASE_FEE) * inRangePercentage) / 10000);
-        outRangeFee = uint24((uint256(BASE_FEE) * outRangePercentage) / 10000);
+        outRangeFee = uint24((uint256(BASE_FEE) * outRangePercentage) / 10000); // this causing the int overflow/underflow??
 
         return (inRangeFee, outRangeFee);
     }
