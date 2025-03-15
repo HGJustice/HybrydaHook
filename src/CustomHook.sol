@@ -7,7 +7,7 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
-import {BeforeSwapDelta, BeforeSwapDeltaLibrary, toBeforeSwapDelta} from "v4-core/types/BeforeSwapDelta.sol";
+import {BeforeSwapDelta, toBeforeSwapDelta} from "v4-core/types/BeforeSwapDelta.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {FearAndGreedIndexConsumer} from "./FearAndGreedIndexConsumer.sol";
@@ -208,36 +208,14 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         uint24 adjustedInRangeFee = getFearNGreedFee(inRangeFee);
 
         uint24 feeWithFlag = adjustedInRangeFee |
-            LPFeeLibrary.OVERRIDE_FEE_FLAG;
-        int128 deltaAmount;
+            LPFeeLibrary.OVERRIDE_FEE_FLAG; // sort out inRange users with fear N Greed index dynamic fee rate
 
-        if (params.zeroForOne) {
-            uint256 inputAmount = uint256(
-                params.amountSpecified < 0
-                    ? -params.amountSpecified
-                    : params.amountSpecified
-            );
-            uint256 feeAmount = (inputAmount * uint256(outRangeFee)) / 1000000;
-            deltaAmount = int128(uint128(feeAmount));
-        } else {
-            uint256 inputAmount = uint256(
-                params.amountSpecified < 0
-                    ? -params.amountSpecified
-                    : params.amountSpecified
-            );
-            uint256 feeAmount = (inputAmount * uint256(outRangeFee)) / 1000000;
-            deltaAmount = int128(uint128(feeAmount));
-        }
+        BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(
+            int128(-params.amountSpecified),
+            int128(params.amountSpecified)
+        );
 
-        BeforeSwapDelta delta;
-        if (params.zeroForOne) {
-            // If swapping token0 for token1, we take some token0 (specified token)
-            delta = toBeforeSwapDelta(deltaAmount, 0);
-        } else {
-            // If swapping token1 for token0, we take some token1 (specified token)
-            delta = toBeforeSwapDelta(0, deltaAmount);
-        }
-        return (this.beforeSwap.selector, delta, feeWithFlag);
+        return (this.beforeSwap.selector, beforeSwapDelta, feeWithFlag);
     }
 
     function calculateFeeSplit()
@@ -256,8 +234,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         uint256 outRangePercentage = 10000 - inRangePercentage;
 
         inRangeFee = uint24((uint256(BASE_FEE) * inRangePercentage) / 10000);
-        outRangeFee = uint24((uint256(BASE_FEE) * outRangePercentage) / 10000); // this causing the int overflow/underflow??
-
+        outRangeFee = uint24((uint256(BASE_FEE) * outRangePercentage) / 10000);
         return (inRangeFee, outRangeFee);
     }
 

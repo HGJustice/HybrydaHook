@@ -73,7 +73,7 @@ contract DynamicFeesTest is Test, Deployers {
 
     function test_DifferentSwapLevels() public {
         PoolSwapTest.TestSettings memory testSettings = PoolSwapTest
-            .TestSettings({takeClaims: false, settleUsingBurn: false});
+            .TestSettings({takeClaims: false, settleUsingBurn: true});
 
         IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
             zeroForOne: true,

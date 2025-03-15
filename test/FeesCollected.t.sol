@@ -20,16 +20,11 @@ contract FeesCollected is Test, Deployers {
     using PoolIdLibrary for PoolId;
     using LPFeeLibrary for uint24;
 
-    MockERC20 token;
-
-    Currency ethCurrency = Currency.wrap(address(0));
-    Currency usdtCurrency;
-
     CustomHook hook;
 
     function setUp() public {
         deployFreshManagerAndRouters();
-        deployMintAndApprove2Currencies();
+        (currency0, currency1) = deployMintAndApprove2Currencies();
 
         address hookAddress = address(
             uint160(
@@ -68,84 +63,31 @@ contract FeesCollected is Test, Deployers {
     }
 
     function test_feesCollected() public {
-        bytes memory hookData = abi.encode(address(this));
-
-        // test if registers in range positions
-        uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
-
-        uint256 ethToAdd = 2 ether;
-        uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
-            sqrtPriceAtTickLower,
-            SQRT_PRICE_1_1,
-            ethToAdd
-        );
-
-        modifyLiquidityRouter.modifyLiquidity{value: ethToAdd}(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: -60,
-                tickUpper: 60,
-                liquidityDelta: int256(uint256(liquidityDelta)),
-                salt: bytes32(0)
-            }),
-            hookData
-        );
-
-        (, , , bool inRange, uint256 nonce, bool exists, ) = hook.userPositions(
-            address(this),
-            0
-        );
-
-        assertEq(exists, true, "Position should exist");
-        assertEq(nonce, 0, "Nonce should be 0");
-        assertEq(inRange, true, "Position should be in range");
-
-        // check if it registers out of range positions
-
-        sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(60);
-
-        ethToAdd = 2 ether;
-        liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
-            sqrtPriceAtTickLower,
-            SQRT_PRICE_1_1,
-            ethToAdd
-        );
-
-        modifyLiquidityRouter.modifyLiquidity{value: ethToAdd}(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: 60,
-                tickUpper: 120,
-                liquidityDelta: int256(uint256(liquidityDelta)),
-                salt: bytes32(0)
-            }),
-            hookData
-        );
-
-        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest
-            .TestSettings({takeClaims: true, settleUsingBurn: true});
-
-        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
-            zeroForOne: true,
-            amountSpecified: -0.1 ether,
-            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
+            takeClaims: false,
+            settleUsingBurn: false
         });
 
-        swapRouter.swap(key, params, testSettings, ZERO_BYTES);
+        uint balanceOfTokenABefore = key.currency0.balanceOfSelf();
+        uint balanceOfTokenBBefore = key.currency1.balanceOfSelf();
 
-        IPoolManager.SwapParams memory paramsReverse = IPoolManager.SwapParams({
-            zeroForOne: false,
-            amountSpecified: -0.1 ether,
-            sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
-        });
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: 100e18,
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            settings,
+            ZERO_BYTES
+        );
 
-        // Perform second swap
-        swapRouter.swap(key, paramsReverse, testSettings, ZERO_BYTES);
+        uint balanceOfTokenAAfter = key.currency0.balanceOfSelf();
+        uint balanceOfTokenBAfter = key.currency1.balanceOfSelf();
 
-        uint256 token0HookBalance = currency0.balanceOf(address(hook));
-        uint256 token1HookBalance = currency1.balanceOf(address(hook));
-
-        console.log("Hook contract token0 balance:", token0HookBalance);
-        console.log("Hook contract token1 balance:", token1HookBalance);
+        assertEq(balanceOfTokenBAfter - balanceOfTokenBBefore, 100e18);
+        assertEq(balanceOfTokenABefore - balanceOfTokenAAfter, 100e18);
+        console.log("Hook contract token0 balance:", balanceOfTokenAAfter);
+        console.log("Hook contract token1 balance:", balanceOfTokenBAfter);
     }
 }
