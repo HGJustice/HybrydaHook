@@ -11,11 +11,14 @@ import {BeforeSwapDelta, toBeforeSwapDelta} from "v4-core/types/BeforeSwapDelta.
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {FearAndGreedIndexConsumer} from "./FearAndGreedIndexConsumer.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 
 contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
     using LPFeeLibrary for uint24;
+    using CurrencySettler for Currency;
 
     uint24 public constant BASE_FEE = 5000;
 
@@ -200,22 +203,41 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
 
     function _beforeSwap(
         address,
-        PoolKey calldata,
+        PoolKey calldata key,
         IPoolManager.SwapParams calldata params,
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
+        uint256 amountInOutPositive = params.amountSpecified > 0
+            ? uint256(params.amountSpecified)
+            : uint256(-params.amountSpecified);
+
         (uint24 inRangeFee, uint24 outRangeFee) = calculateFeeSplit();
         uint24 adjustedInRangeFee = getFearNGreedFee(inRangeFee);
 
         uint24 feeWithFlag = adjustedInRangeFee |
             LPFeeLibrary.OVERRIDE_FEE_FLAG; // sort out inRange users with fear N Greed index dynamic fee rate
 
-        BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(
-            int128(-params.amountSpecified),
-            int128(params.amountSpecified)
-        );
+        int128 halfAmount = int128(params.amountSpecified / 2);
+
+        BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(halfAmount, 0);
+
+        handleCurrencyOperations(key, params.zeroForOne, uint256(halfAmount));
 
         return (this.beforeSwap.selector, beforeSwapDelta, feeWithFlag);
+    }
+
+    function handleCurrencyOperations(
+        PoolKey calldata key,
+        bool zeroForOne,
+        uint256 amount
+    ) internal {
+        if (zeroForOne) {
+            key.currency0.take(poolManager, address(this), amount, true);
+            key.currency1.settle(poolManager, address(this), amount, true);
+        } else {
+            key.currency0.settle(poolManager, address(this), amount, true);
+            key.currency1.take(poolManager, address(this), amount, true);
+        }
     }
 
     function calculateFeeSplit()

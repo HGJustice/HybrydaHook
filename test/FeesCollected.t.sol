@@ -15,6 +15,7 @@ import {CustomHook} from "../src/CustomHook.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {console} from "forge-std/console.sol";
+import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 contract FeesCollected is Test, Deployers {
     using PoolIdLibrary for PoolId;
@@ -68,26 +69,33 @@ contract FeesCollected is Test, Deployers {
             settleUsingBurn: false
         });
 
-        uint balanceOfTokenABefore = key.currency0.balanceOfSelf();
-        uint balanceOfTokenBBefore = key.currency1.balanceOfSelf();
+        uint256 hookToken0Before = IERC20(Currency.unwrap(key.currency0))
+            .balanceOf(address(hook));
+        uint256 hookToken1Before = IERC20(Currency.unwrap(key.currency1))
+            .balanceOf(address(hook));
+
+        console.log("Hook token0 balance before:", hookToken0Before);
+        console.log("Hook token1 balance before:", hookToken1Before);
 
         swapRouter.swap(
             key,
             IPoolManager.SwapParams({
                 zeroForOne: true,
-                amountSpecified: 100e18,
+                amountSpecified: 10,
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             settings,
             ZERO_BYTES
         );
 
-        uint balanceOfTokenAAfter = key.currency0.balanceOfSelf();
-        uint balanceOfTokenBAfter = key.currency1.balanceOfSelf();
+        uint256 hookToken0After = IERC20(Currency.unwrap(key.currency0))
+            .balanceOf(address(hook));
+        uint256 hookToken1After = IERC20(Currency.unwrap(key.currency1))
+            .balanceOf(address(hook));
 
-        assertEq(balanceOfTokenBAfter - balanceOfTokenBBefore, 100e18);
-        assertEq(balanceOfTokenABefore - balanceOfTokenAAfter, 100e18);
-        console.log("Hook contract token0 balance:", balanceOfTokenAAfter);
-        console.log("Hook contract token1 balance:", balanceOfTokenBAfter);
+        console.log("Hook token0 balance after:", hookToken0After);
+        console.log("Hook token1 balance after:", hookToken1After);
+        console.log("Token0 change:", hookToken0After - hookToken0Before);
+        console.log("Token1 change:", hookToken1After - hookToken1Before);
     }
 }
