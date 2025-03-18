@@ -74,7 +74,7 @@ contract FeesCollected is Test, Deployers {
                 key,
                 IPoolManager.SwapParams({
                     zeroForOne: true,
-                    amountSpecified: -0.1 ether, // Use a larger amount to generate more fees
+                    amountSpecified: -0.1 ether,
                     sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
                 }),
                 settings,
