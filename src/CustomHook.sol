@@ -217,11 +217,11 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         uint24 feeWithFlag = adjustedInRangeFee |
             LPFeeLibrary.OVERRIDE_FEE_FLAG; // sort out inRange users with fear N Greed index dynamic fee rate
 
-        int128 halfAmount = int128(params.amountSpecified / 2);
-
-        BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(halfAmount, 0);
-
-        handleCurrencyOperations(key, params.zeroForOne, uint256(halfAmount));
+        BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(
+            int128(-params.amountSpecified),
+            int128(params.amountSpecified)
+        );
+        handleCurrencyOperations(key, params.zeroForOne, amountInOutPositive);
 
         return (this.beforeSwap.selector, beforeSwapDelta, feeWithFlag);
     }
