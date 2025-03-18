@@ -207,37 +207,35 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         IPoolManager.SwapParams calldata params,
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-        uint256 amountInOutPositive = params.amountSpecified > 0
-            ? uint256(params.amountSpecified)
-            : uint256(-params.amountSpecified);
-
         (uint24 inRangeFee, uint24 outRangeFee) = calculateFeeSplit();
         uint24 adjustedInRangeFee = getFearNGreedFee(inRangeFee);
 
         uint24 feeWithFlag = adjustedInRangeFee |
             LPFeeLibrary.OVERRIDE_FEE_FLAG; // sort out inRange users with fear N Greed index dynamic fee rate
 
-        BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(
-            int128(-params.amountSpecified),
-            int128(params.amountSpecified)
-        );
-        handleCurrencyOperations(key, params.zeroForOne, amountInOutPositive);
+        int256 swapAmount = params.amountSpecified;
+
+        uint256 absAmount;
+        if (swapAmount < 0) {
+            absAmount = uint256(-swapAmount);
+        } else {
+            absAmount = uint256(swapAmount);
+        }
+
+        uint256 feeAmount = (absAmount * 4) / 100;
+
+        int128 delta0 = 0;
+        int128 delta1 = 0;
+
+        if (params.zeroForOne) {
+            delta0 = int128(int256(feeAmount));
+        } else {
+            delta1 = int128(int256(feeAmount));
+        }
+
+        BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(delta0, delta1);
 
         return (this.beforeSwap.selector, beforeSwapDelta, feeWithFlag);
-    }
-
-    function handleCurrencyOperations(
-        PoolKey calldata key,
-        bool zeroForOne,
-        uint256 amount
-    ) internal {
-        if (zeroForOne) {
-            key.currency0.take(poolManager, address(this), amount, true);
-            key.currency1.settle(poolManager, address(this), amount, true);
-        } else {
-            key.currency0.settle(poolManager, address(this), amount, true);
-            key.currency1.take(poolManager, address(this), amount, true);
-        }
     }
 
     function calculateFeeSplit()

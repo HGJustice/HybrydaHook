@@ -69,33 +69,32 @@ contract FeesCollected is Test, Deployers {
             settleUsingBurn: false
         });
 
-        uint256 hookToken0Before = IERC20(Currency.unwrap(key.currency0))
-            .balanceOf(address(hook));
-        uint256 hookToken1Before = IERC20(Currency.unwrap(key.currency1))
-            .balanceOf(address(hook));
+        for (uint i = 0; i < 100; i++) {
+            swapRouter.swap(
+                key,
+                IPoolManager.SwapParams({
+                    zeroForOne: true,
+                    amountSpecified: -0.1 ether, // Use a larger amount to generate more fees
+                    sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                }),
+                settings,
+                ZERO_BYTES
+            );
+        }
 
-        console.log("Hook token0 balance before:", hookToken0Before);
-        console.log("Hook token1 balance before:", hookToken1Before);
+        uint256 token0ClaimID = CurrencyLibrary.toId(key.currency0);
+        uint256 token1ClaimID = CurrencyLibrary.toId(key.currency1);
 
-        swapRouter.swap(
-            key,
-            IPoolManager.SwapParams({
-                zeroForOne: true,
-                amountSpecified: 10,
-                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
-            }),
-            settings,
-            ZERO_BYTES
+        uint256 token0Claims = manager.balanceOf(address(hook), token0ClaimID);
+        uint256 token1Claims = manager.balanceOf(address(hook), token1ClaimID);
+
+        console.log("Hook's token0 claim balance:", token0Claims);
+        console.log("Hook's token1 claim balance:", token1Claims);
+
+        // You can also check your tracked fees in the mapping
+        console.log(
+            "Tracked fees for this account:",
+            hook.outOfRangeFees(address(this))
         );
-
-        uint256 hookToken0After = IERC20(Currency.unwrap(key.currency0))
-            .balanceOf(address(hook));
-        uint256 hookToken1After = IERC20(Currency.unwrap(key.currency1))
-            .balanceOf(address(hook));
-
-        console.log("Hook token0 balance after:", hookToken0After);
-        console.log("Hook token1 balance after:", hookToken1After);
-        console.log("Token0 change:", hookToken0After - hookToken0Before);
-        console.log("Token1 change:", hookToken1After - hookToken1Before);
     }
 }
