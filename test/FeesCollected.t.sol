@@ -69,18 +69,18 @@ contract FeesCollected is Test, Deployers {
             settleUsingBurn: false
         });
 
-        // for (uint i = 0; i < 5; i++) {
-        //     swapRouter.swap(
-        //         key,
-        //         IPoolManager.SwapParams({
-        //             zeroForOne: true,                                 //works for true: zeroForOne
-        //             amountSpecified: -0.1 ether,
-        //             sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
-        //         }),
-        //         settings,
-        //         ZERO_BYTES
-        //     );
-        // }
+        for (uint i = 0; i < 5; i++) {
+            swapRouter.swap(
+                key,
+                IPoolManager.SwapParams({
+                    zeroForOne: true, //works for true: zeroForOne
+                    amountSpecified: -0.1 ether,
+                    sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                }),
+                settings,
+                ZERO_BYTES
+            );
+        }
 
         for (uint i = 0; i < 5; i++) {
             swapRouter.swap(

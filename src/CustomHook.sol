@@ -84,26 +84,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         return this.beforeInitialize.selector;
     }
 
-    function getFearNGreedFee(uint24 feeAmount) internal view returns (uint24) {
-        uint fearNGreed = index;
-        if (fearNGreed < 20) {
-            // Extreme fear
-            return feeAmount * 2;
-        } else if (fearNGreed < 40) {
-            // Fear
-            return (feeAmount * 15) / 10;
-        } else if (fearNGreed < 60) {
-            // Neutral
-            return feeAmount;
-        } else if (fearNGreed < 80) {
-            // Greed
-            return (feeAmount * 15) / 10;
-        } else {
-            // Extreme greed
-            return feeAmount * 2;
-        }
-    }
-
     function _afterAddLiquidity(
         address,
         PoolKey calldata key,
@@ -207,8 +187,11 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         IPoolManager.SwapParams calldata params,
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-        (uint24 inRangeFee, uint24 outRangeFee) = calculateFeeSplit();
-        uint24 feeWithFlag = getFearNGreedFee(inRangeFee) |
+        (
+            uint24 inRangePercentage,
+            uint24 outRangePercentage
+        ) = calculateFeeSplit();
+        uint24 feeWithFlag = getFearNGreedFee(inRangePercentage) |
             LPFeeLibrary.OVERRIDE_FEE_FLAG;
 
         uint256 absAmount;
@@ -220,52 +203,12 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
 
         uint256 feeAmount = (absAmount * 5) / 10000;
 
-        int128 delta0 = 0;
-        int128 delta1 = 0;
-
-        if (params.zeroForOne) {
-            delta0 = int128(int256(feeAmount));
-        } else {
-            delta1 = int128(int256(feeAmount));
-        }
-
-        BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(delta0, delta1);
+        int128 delta = int128(int256(feeAmount));
+        BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(delta, 0);
 
         settleFees(key, params.zeroForOne, feeAmount);
 
         return (this.beforeSwap.selector, beforeSwapDelta, feeWithFlag);
-    }
-
-    function settleFees(
-        PoolKey calldata key,
-        bool zeroForOne,
-        uint256 feeAmount
-    ) internal {
-        if (zeroForOne) {
-            key.currency0.take(poolManager, address(this), feeAmount, true);
-        } else {
-            key.currency1.take(poolManager, address(this), feeAmount, true);
-        }
-    }
-
-    function calculateFeeSplit()
-        internal
-        view
-        returns (uint24 inRangeFee, uint24 outRangeFee)
-    {
-        uint128 totalLiq = inRangeLiquidity + outRangeLiquidity;
-
-        if (totalLiq == 0) {
-            return (0, 0);
-        }
-
-        uint256 inRangePercentage = (uint256(inRangeLiquidity) * 10000) /
-            uint256(totalLiq);
-        uint256 outRangePercentage = 10000 - inRangePercentage;
-
-        inRangeFee = uint24((uint256(BASE_FEE) * inRangePercentage) / 10000);
-        outRangeFee = uint24((uint256(BASE_FEE) * outRangePercentage) / 10000);
-        return (inRangeFee, outRangeFee);
     }
 
     function _afterSwap(
@@ -317,5 +260,57 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
             }
         }
         return (this.afterSwap.selector, 0);
+    }
+
+    function settleFees(
+        PoolKey calldata key,
+        bool zeroForOne,
+        uint256 feeAmount
+    ) internal {
+        if (zeroForOne) {
+            key.currency0.take(poolManager, address(this), feeAmount, true);
+        } else {
+            key.currency1.take(poolManager, address(this), feeAmount, true);
+        }
+    }
+
+    function calculateFeeSplit()
+        internal
+        view
+        returns (uint24 inRangeFee, uint24 outRangeFee)
+    {
+        uint128 totalLiq = inRangeLiquidity + outRangeLiquidity;
+
+        if (totalLiq == 0) {
+            return (0, 0);
+        }
+
+        uint256 inRangePercentage = (uint256(inRangeLiquidity) * 10000) /
+            uint256(totalLiq);
+        uint256 outRangePercentage = 10000 - inRangePercentage;
+
+        inRangeFee = uint24((uint256(BASE_FEE) * inRangePercentage) / 10000);
+        outRangeFee = uint24((uint256(BASE_FEE) * outRangePercentage) / 10000);
+        return (inRangeFee, outRangeFee);
+    }
+
+    function getFearNGreedFee(uint24 feeAmount) internal view returns (uint24) {
+        uint fearNGreed = index;
+        if (fearNGreed < 20) {
+            // Extreme fear
+            return feeAmount * 2;
+        } else if (fearNGreed < 40) {
+            // Fear
+            return (feeAmount * 15) / 10;
+        } else if (fearNGreed < 60) {
+            // Neutral
+            return feeAmount;
+        } else if (fearNGreed < 80) {
+            // Greed
+            return (feeAmount * 15) / 10;
+        } else {
+            // Extreme greed
+            return feeAmount * 2;
+        }
     }
 }
