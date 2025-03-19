@@ -56,7 +56,7 @@ contract FeesCollected is Test, Deployers {
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
                 tickUpper: 60,
-                liquidityDelta: 100 ether,
+                liquidityDelta: 1000 ether,
                 salt: bytes32(0)
             }),
             addHookData
@@ -69,13 +69,26 @@ contract FeesCollected is Test, Deployers {
             settleUsingBurn: false
         });
 
-        for (uint i = 0; i < 100; i++) {
+        // for (uint i = 0; i < 5; i++) {
+        //     swapRouter.swap(
+        //         key,
+        //         IPoolManager.SwapParams({
+        //             zeroForOne: true,                                 //works for true: zeroForOne
+        //             amountSpecified: -0.1 ether,
+        //             sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        //         }),
+        //         settings,
+        //         ZERO_BYTES
+        //     );
+        // }
+
+        for (uint i = 0; i < 5; i++) {
             swapRouter.swap(
                 key,
                 IPoolManager.SwapParams({
-                    zeroForOne: true,
+                    zeroForOne: false,
                     amountSpecified: -0.1 ether,
-                    sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                    sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
                 }),
                 settings,
                 ZERO_BYTES
@@ -90,11 +103,5 @@ contract FeesCollected is Test, Deployers {
 
         console.log("Hook's token0 claim balance:", token0Claims);
         console.log("Hook's token1 claim balance:", token1Claims);
-
-        // You can also check your tracked fees in the mapping
-        console.log(
-            "Tracked fees for this account:",
-            hook.outOfRangeFees(address(this))
-        );
     }
 }

@@ -208,21 +208,17 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
         (uint24 inRangeFee, uint24 outRangeFee) = calculateFeeSplit();
-        uint24 adjustedInRangeFee = getFearNGreedFee(inRangeFee);
-
-        uint24 feeWithFlag = adjustedInRangeFee |
-            LPFeeLibrary.OVERRIDE_FEE_FLAG; // sort out inRange users with fear N Greed index dynamic fee rate
-
-        int256 swapAmount = params.amountSpecified;
+        uint24 feeWithFlag = getFearNGreedFee(inRangeFee) |
+            LPFeeLibrary.OVERRIDE_FEE_FLAG;
 
         uint256 absAmount;
-        if (swapAmount < 0) {
-            absAmount = uint256(-swapAmount);
+        if (params.amountSpecified < 0) {
+            absAmount = uint256(-params.amountSpecified);
         } else {
-            absAmount = uint256(swapAmount);
+            absAmount = uint256(params.amountSpecified);
         }
 
-        uint256 feeAmount = (absAmount * 4) / 100;
+        uint256 feeAmount = (absAmount * 5) / 10000;
 
         int128 delta0 = 0;
         int128 delta1 = 0;
@@ -235,7 +231,21 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
 
         BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(delta0, delta1);
 
+        settleFees(key, params.zeroForOne, feeAmount);
+
         return (this.beforeSwap.selector, beforeSwapDelta, feeWithFlag);
+    }
+
+    function settleFees(
+        PoolKey calldata key,
+        bool zeroForOne,
+        uint256 feeAmount
+    ) internal {
+        if (zeroForOne) {
+            key.currency0.take(poolManager, address(this), feeAmount, true);
+        } else {
+            key.currency1.take(poolManager, address(this), feeAmount, true);
+        }
     }
 
     function calculateFeeSplit()
@@ -256,12 +266,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         inRangeFee = uint24((uint256(BASE_FEE) * inRangePercentage) / 10000);
         outRangeFee = uint24((uint256(BASE_FEE) * outRangePercentage) / 10000);
         return (inRangeFee, outRangeFee);
-    }
-
-    function claimFees() external {
-        // check if person claiming is owner
-        uint256 fees = outOfRangeFees[msg.sender];
-        // allow to take x amount form pool manager to send to user??
     }
 
     function _afterSwap(
