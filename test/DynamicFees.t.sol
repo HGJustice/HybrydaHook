@@ -28,7 +28,7 @@ contract DynamicFeesTest is Test, Deployers {
 
     function setUp() public {
         deployFreshManagerAndRouters();
-        deployMintAndApprove2Currencies();
+        (currency0, currency1) = deployMintAndApprove2Currencies();
 
         address hookAddress = address(
             uint160(
@@ -50,7 +50,7 @@ contract DynamicFeesTest is Test, Deployers {
             currency1,
             hook,
             LPFeeLibrary.DYNAMIC_FEE_FLAG,
-            SQRT_PRICE_1_1 // 1 for 1 ratio of both coins in pool
+            SQRT_PRICE_1_1
         );
         bytes memory addHookData = abi.encode(address(this));
 
@@ -59,7 +59,7 @@ contract DynamicFeesTest is Test, Deployers {
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
                 tickUpper: 60,
-                liquidityDelta: 100 ether,
+                liquidityDelta: 1000 ether,
                 salt: bytes32(0)
             }),
             addHookData
@@ -72,18 +72,23 @@ contract DynamicFeesTest is Test, Deployers {
     }
 
     function test_DifferentSwapLevels() public {
-        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest
-            .TestSettings({takeClaims: false, settleUsingBurn: true});
-
-        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
-            zeroForOne: true,
-            amountSpecified: -0.00001 ether,
-            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
+            takeClaims: false,
+            settleUsingBurn: false
         });
 
         // Extreme fear (15)
         uint256 balanceOfToken1Before = currency1.balanceOfSelf();
-        swapRouter.swap(key, params, testSettings, ZERO_BYTES);
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: -0.1 ether,
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            settings,
+            ZERO_BYTES
+        );
         uint256 balanceOfToken1After = currency1.balanceOfSelf();
         uint256 extremeFearOutput = balanceOfToken1After -
             balanceOfToken1Before;
@@ -93,7 +98,16 @@ contract DynamicFeesTest is Test, Deployers {
         uint256 indexSlot = 6;
         vm.store(address(hook), bytes32(indexSlot), bytes32(uint256(25)));
         balanceOfToken1Before = currency1.balanceOfSelf();
-        swapRouter.swap(key, params, testSettings, ZERO_BYTES);
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: -0.1 ether,
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            settings,
+            ZERO_BYTES
+        );
         balanceOfToken1After = currency1.balanceOfSelf();
         uint256 fearOutput = balanceOfToken1After - balanceOfToken1Before;
         console.log("Fear Output (1.5x fee):", fearOutput);
@@ -101,7 +115,16 @@ contract DynamicFeesTest is Test, Deployers {
         // Neutral (50)
         vm.store(address(hook), bytes32(indexSlot), bytes32(uint256(50)));
         balanceOfToken1Before = currency1.balanceOfSelf();
-        swapRouter.swap(key, params, testSettings, ZERO_BYTES);
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: -0.1 ether,
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            settings,
+            ZERO_BYTES
+        );
         balanceOfToken1After = currency1.balanceOfSelf();
         uint256 neutralOutput = balanceOfToken1After - balanceOfToken1Before;
         console.log("Neutral Output (1x fee):", neutralOutput);
@@ -109,7 +132,16 @@ contract DynamicFeesTest is Test, Deployers {
         // Greed (70)
         vm.store(address(hook), bytes32(indexSlot), bytes32(uint256(70)));
         balanceOfToken1Before = currency1.balanceOfSelf();
-        swapRouter.swap(key, params, testSettings, ZERO_BYTES);
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: -0.1 ether,
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            settings,
+            ZERO_BYTES
+        );
         balanceOfToken1After = currency1.balanceOfSelf();
         uint256 greedOutput = balanceOfToken1After - balanceOfToken1Before;
         console.log("Greed Output (1.5x fee):", greedOutput);
@@ -117,7 +149,16 @@ contract DynamicFeesTest is Test, Deployers {
         // Extreme Greed (90)
         vm.store(address(hook), bytes32(indexSlot), bytes32(uint256(90)));
         balanceOfToken1Before = currency1.balanceOfSelf();
-        swapRouter.swap(key, params, testSettings, ZERO_BYTES);
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: -0.1 ether,
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            settings,
+            ZERO_BYTES
+        );
         balanceOfToken1After = currency1.balanceOfSelf();
         uint256 extremeGreedOutput = balanceOfToken1After -
             balanceOfToken1Before;

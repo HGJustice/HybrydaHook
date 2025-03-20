@@ -56,7 +56,18 @@ contract FeesCollected is Test, Deployers {
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
                 tickUpper: 60,
-                liquidityDelta: 1000 ether,
+                liquidityDelta: 1000 ether, // in range liquidity
+                salt: bytes32(0)
+            }),
+            addHookData
+        );
+
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: 60,
+                tickUpper: 120,
+                liquidityDelta: 500 ether,
                 salt: bytes32(0)
             }),
             addHookData
@@ -73,7 +84,7 @@ contract FeesCollected is Test, Deployers {
             swapRouter.swap(
                 key,
                 IPoolManager.SwapParams({
-                    zeroForOne: true, //works for true: zeroForOne
+                    zeroForOne: true,
                     amountSpecified: -0.1 ether,
                     sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
                 }),
@@ -103,5 +114,107 @@ contract FeesCollected is Test, Deployers {
 
         console.log("Hook's token0 claim balance:", token0Claims);
         console.log("Hook's token1 claim balance:", token1Claims);
+    }
+
+    function test_claimFees() public {
+        // 1. Execute swaps to generate fees
+        PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
+            takeClaims: false,
+            settleUsingBurn: false
+        });
+
+        // Perform several swaps to generate fees
+        for (uint i = 0; i < 5; i++) {
+            swapRouter.swap(
+                key,
+                IPoolManager.SwapParams({
+                    zeroForOne: true,
+                    amountSpecified: -0.1 ether,
+                    sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                }),
+                settings,
+                ZERO_BYTES
+            );
+        }
+
+        // 2. Get initial balances
+        uint256 initialToken0Balance = IERC20(Currency.unwrap(currency0))
+            .balanceOf(address(this));
+        uint256 initialToken1Balance = IERC20(Currency.unwrap(currency1))
+            .balanceOf(address(this));
+
+        // 3. Check fees in the hook before claiming
+        uint256 token0ClaimsBefore = manager.balanceOf(
+            address(hook),
+            CurrencyLibrary.toId(currency0)
+        );
+        uint256 token1ClaimsBefore = manager.balanceOf(
+            address(hook),
+            CurrencyLibrary.toId(currency1)
+        );
+
+        console.log("Hook's token0 claims before:", token0ClaimsBefore);
+        console.log("Hook's token1 claims before:", token1ClaimsBefore);
+
+        // 4. Get user's fee balance (you'll need to add this helper function)
+        uint256 userToken0FeesBefore = hook.getOutOfRangeFees(
+            address(this),
+            currency0
+        );
+        console.log(
+            "User's token0 fees before claiming:",
+            userToken0FeesBefore
+        );
+
+        // 5. Claim fees (using Currency type directly)
+        hook.claimFees(currency0);
+
+        // 6. Verify token0 was transferred
+        uint256 finalToken0Balance = IERC20(Currency.unwrap(currency0))
+            .balanceOf(address(this));
+        uint256 token0ClaimsAfter = manager.balanceOf(
+            address(hook),
+            CurrencyLibrary.toId(currency0)
+        );
+
+        console.log("Hook's token0 claims after:", token0ClaimsAfter);
+        console.log(
+            "Token0 balance increase:",
+            finalToken0Balance - initialToken0Balance
+        );
+
+        // 7. User's fee balance should be reset
+        uint256 userToken0FeesAfter = hook.getOutOfRangeFees(
+            address(this),
+            currency0
+        );
+        assertEq(
+            userToken0FeesAfter,
+            0,
+            "User's token0 fees should be reset to 0"
+        );
+
+        // 8. Now claim token1 fees
+        hook.claimFees(currency1);
+
+        // 9. Verify token1 was transferred
+        uint256 finalToken1Balance = IERC20(Currency.unwrap(currency1))
+            .balanceOf(address(this));
+
+        console.log(
+            "Token1 balance increase:",
+            finalToken1Balance - initialToken1Balance
+        );
+
+        // 10. User's token1 fee balance should be reset
+        uint256 userToken1FeesAfter = hook.getOutOfRangeFees(
+            address(this),
+            currency1
+        );
+        assertEq(
+            userToken1FeesAfter,
+            0,
+            "User's token1 fees should be reset to 0"
+        );
     }
 }

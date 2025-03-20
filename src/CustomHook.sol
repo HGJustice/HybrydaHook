@@ -13,6 +13,7 @@ import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {FearAndGreedIndexConsumer} from "./FearAndGreedIndexConsumer.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
+import {console} from "forge-std/console.sol";
 
 contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
     using StateLibrary for IPoolManager;
@@ -37,7 +38,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
 
     mapping(address => mapping(uint256 => Position)) public userPositions;
     mapping(address => uint256) public nonceCount;
-    mapping(address => uint256) public outOfRangeFees;
+    mapping(address => mapping(Currency => uint256)) outOfRangeFees;
 
     Position[] public inRangePositions;
     Position[] public outOfRangePositions;
@@ -47,6 +48,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
     error NoAddressGiven();
     error InvalidPositionID();
     error NotOwner();
+    error NoFeesToWithdraw();
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
@@ -98,13 +100,11 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         uint256 currentUserNonce = nonceCount[currentUser];
 
         if (!userPositions[currentUser][currentUserNonce].exists) {
-            // get the current tick in the pool
             (, int24 currentTick, , ) = poolManager.getSlot0(key.toId());
-            // check if params of the addeed liq is in range of the current tick
+
             bool inRange = params.tickLower <= currentTick &&
                 currentTick < params.tickUpper;
             if (inRange) {
-                // if in range give bool true
                 Position memory newPosition = Position({
                     tickUpper: params.tickUpper,
                     tickLower: params.tickLower,
@@ -118,7 +118,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                 userPositions[currentUser][currentUserNonce] = newPosition;
                 inRangeLiquidity += uint128(uint256(params.liquidityDelta));
             } else {
-                // else not
                 Position memory newPosition = Position({
                     tickUpper: params.tickUpper,
                     tickLower: params.tickLower,
@@ -134,7 +133,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
             }
             nonceCount[currentUser] = currentUserNonce + 1;
         } else {
-            // laslty if user just adding to current position just add liquiuduty
             userPositions[currentUser][currentUserNonce].liquidity += uint128(
                 uint256(params.liquidityDelta)
             );
@@ -187,11 +185,8 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         IPoolManager.SwapParams calldata params,
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-        (
-            uint24 inRangePercentage,
-            uint24 outRangePercentage
-        ) = calculateFeeSplit();
-        uint24 feeWithFlag = getFearNGreedFee(inRangePercentage) |
+        (uint24 inRangeFeeSplit, uint24 outRangeFeeSplit) = calculateFeeSplit();
+        uint24 feeWithFlag = getFearNGreedFee(inRangeFeeSplit) |
             LPFeeLibrary.OVERRIDE_FEE_FLAG;
 
         uint256 absAmount;
@@ -201,12 +196,11 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
             absAmount = uint256(params.amountSpecified);
         }
 
-        uint256 feeAmount = (absAmount * 5) / 10000;
-
+        uint256 feeAmount = (absAmount * outRangeFeeSplit) / 10000;
         int128 delta = int128(int256(feeAmount));
         BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(delta, 0);
-
         settleFees(key, params.zeroForOne, feeAmount);
+        distributeFees(key, params.zeroForOne, feeAmount);
 
         return (this.beforeSwap.selector, beforeSwapDelta, feeWithFlag);
     }
@@ -221,7 +215,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         (, int24 currentTick, , ) = poolManager.getSlot0(key.toId());
         Position[] storage outRangeUsers = outOfRangePositions;
         Position[] storage inRangeUsers = inRangePositions;
-        //check inRange positions
+
         for (uint i = 0; i < inRangeUsers.length; i++) {
             Position storage currentPositon = inRangeUsers[i];
             if (
@@ -240,7 +234,7 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
                 i--;
             }
         }
-        //check outRange positions
+
         for (uint i = 0; i < outRangeUsers.length; i++) {
             Position storage currentPosition = outRangeUsers[i];
             if (
@@ -260,6 +254,39 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
             }
         }
         return (this.afterSwap.selector, 0);
+    }
+
+    function claimFees(PoolKey calldata key, Currency token) external {
+        uint256 amount = outOfRangeFees[msg.sender][token];
+        if (amount == 0) {
+            revert NoFeesToWithdraw();
+        }
+        outOfRangeFees[msg.sender][token] = 0;
+
+        key.token.take(poolManager, msg.sender, amount, false);
+    }
+
+    function distributeFees(
+        PoolKey calldata key,
+        bool zeroForOne,
+        uint256 feeAmount
+    ) internal {
+        if (outRangeLiquidity == 0) return;
+        Currency token0 = key.currency0;
+        Currency token1 = key.currency1;
+
+        Currency tokenToDistribute = zeroForOne ? token0 : token1;
+
+        for (uint i = 0; i < outOfRangePositions.length; i++) {
+            Position memory currentPosition = outOfRangePositions[i];
+            if (currentPosition.exists) {
+                uint256 positionShare = (feeAmount *
+                    currentPosition.liquidity) / outRangeLiquidity;
+                outOfRangeFees[currentPosition.owner][
+                    tokenToDistribute
+                ] += positionShare;
+            }
+        }
     }
 
     function settleFees(
@@ -312,5 +339,12 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
             // Extreme greed
             return feeAmount * 2;
         }
+    }
+
+    function getOutOfRangeFees(
+        address user,
+        Currency token
+    ) external view returns (uint256) {
+        return outOfRangeFees[user][token];
     }
 }
