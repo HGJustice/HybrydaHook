@@ -117,13 +117,11 @@ contract FeesCollected is Test, Deployers {
     }
 
     function test_simpleClaimFees() public {
-        // Perform a few swaps to generate fees
         PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
             takeClaims: false,
             settleUsingBurn: false
         });
 
-        // Do some swaps
         for (uint i = 0; i < 3; i++) {
             swapRouter.swap(
                 key,
@@ -137,17 +135,13 @@ contract FeesCollected is Test, Deployers {
             );
         }
 
-        // Check user balances before claim
         MockERC20 token0 = MockERC20(Currency.unwrap(currency0));
         uint256 userBalanceBefore = token0.balanceOf(address(this));
 
-        // Claim fees
         hook.claimFees(currency0);
 
-        // Check user balances after claim
         uint256 userBalanceAfter = token0.balanceOf(address(this));
 
-        // Verify user received fees
         assertGt(
             userBalanceAfter,
             userBalanceBefore,
