@@ -256,14 +256,14 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         return (this.afterSwap.selector, 0);
     }
 
-    function claimFees(PoolKey calldata key, Currency token) external {
+    function claimFees(Currency token) external {
         uint256 amount = outOfRangeFees[msg.sender][token];
         if (amount == 0) {
             revert NoFeesToWithdraw();
         }
         outOfRangeFees[msg.sender][token] = 0;
 
-        key.token.take(poolManager, msg.sender, amount, false);
+        token.transfer(msg.sender, amount);
     }
 
     function distributeFees(
@@ -295,9 +295,9 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
         uint256 feeAmount
     ) internal {
         if (zeroForOne) {
-            key.currency0.take(poolManager, address(this), feeAmount, true);
+            key.currency0.take(poolManager, address(this), feeAmount, false);
         } else {
-            key.currency1.take(poolManager, address(this), feeAmount, true);
+            key.currency1.take(poolManager, address(this), feeAmount, false);
         }
     }
 

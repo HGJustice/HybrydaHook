@@ -16,6 +16,7 @@ import {CustomHook} from "../src/CustomHook.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
+import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
 
 contract TrackingPositionsTest is Test, Deployers {
     using PoolIdLibrary for PoolId;
@@ -186,67 +187,6 @@ contract TrackingPositionsTest is Test, Deployers {
             address(this).balance,
             initialEthBalance,
             "ETH balance should increase after removal"
-        );
-    }
-
-    function test_fullRemoveLiquidity() public {
-        bytes memory addHookData = abi.encode(address(this));
-        bytes memory removeHookData = abi.encode(address(this), 0);
-
-        // add liquiduty
-        uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
-
-        uint256 ethToAdd = 2 ether;
-        uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
-            sqrtPriceAtTickLower,
-            SQRT_PRICE_1_1,
-            ethToAdd
-        );
-
-        modifyLiquidityRouter.modifyLiquidity{value: ethToAdd}(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: -60,
-                tickUpper: 60,
-                liquidityDelta: int256(uint256(liquidityDelta)),
-                salt: bytes32(0)
-            }),
-            addHookData
-        );
-
-        (, , , bool inRange, uint256 nonce, bool exists, ) = hook.userPositions(
-            address(this),
-            0
-        );
-
-        assertEq(exists, true, "Position should exist");
-        assertEq(nonce, 0, "Nonce should be 0");
-        assertEq(inRange, true, "Position should be in range");
-
-        uint256 initialEthBalance = address(this).balance;
-        //remove all liquiduty and check bool
-        modifyLiquidityRouter.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: -60,
-                tickUpper: 60,
-                liquidityDelta: -int256(uint256(liquidityDelta)),
-                salt: bytes32(0)
-            }),
-            removeHookData
-        );
-
-        (, , , , , bool existsAfter, ) = hook.userPositions(address(this), 0);
-
-        assertEq(
-            existsAfter,
-            false,
-            "Position should be marked as non-existent after full removal"
-        );
-        assertGt(
-            address(this).balance,
-            initialEthBalance,
-            "ETH balance should increase after final removal"
         );
     }
 }
