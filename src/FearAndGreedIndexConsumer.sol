@@ -32,7 +32,7 @@ contract FearAndGreedIndexConsumer is FunctionsClient {
     string source =
         "const apiResponse = await Functions.makeHttpRequest({"
         "'url': 'https://pro-api.coinmarketcap.com/v3/fear-and-greed/latest',"
-        "'headers': {'X-CMC_PRO_API_KEY': '937fe67d-c6d7-4ec2-8b56-464fae07a2ea'}"
+        "'headers': {'X-CMC_PRO_API_KEY': ''}"
         "});"
         "if(apiResponse.error) throw Error('Request failed');"
         "return Functions.encodeString(apiResponse.data.data.value);";

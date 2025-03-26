@@ -16,9 +16,11 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {console} from "forge-std/console.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 
-contract FeesCollected is Test, Deployers {
+contract AfterSwapTest is Test, Deployers {
     using PoolIdLibrary for PoolId;
+    using StateLibrary for IPoolManager;
     using LPFeeLibrary for uint24;
 
     CustomHook hook;
@@ -74,31 +76,46 @@ contract FeesCollected is Test, Deployers {
         );
     }
 
-    function test_feesCollected() public {
+    function test_newLiquidityRangeStatus() public {
+        (, int24 currentTick, , ) = manager.getSlot0(key.toId());
+        console.log("Current tick before test:", currentTick);
+
+        bytes memory addHookData = abi.encode(address(this));
+
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: 0,
+                tickUpper: 60,
+                liquidityDelta: 300 ether,
+                salt: bytes32(0)
+            }),
+            addHookData
+        );
+
+        uint128 startInRangeLiquidity = hook.inRangeLiquidity();
+        uint128 startOutRangeLiquidity = hook.outRangeLiquidity();
+
+        console.log(
+            "After adding liquidity - in-range:",
+            startInRangeLiquidity
+        );
+        console.log(
+            "After adding liquidity - out-range:",
+            startOutRangeLiquidity
+        );
+
         PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
             takeClaims: false,
             settleUsingBurn: false
         });
 
-        for (uint i = 0; i < 5; i++) {
-            swapRouter.swap(
-                key,
-                IPoolManager.SwapParams({
-                    zeroForOne: true,
-                    amountSpecified: -0.1 ether,
-                    sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
-                }),
-                settings,
-                ZERO_BYTES
-            );
-        }
-
-        for (uint i = 0; i < 5; i++) {
+        for (uint i = 0; i < 100; i++) {
             swapRouter.swap(
                 key,
                 IPoolManager.SwapParams({
                     zeroForOne: false,
-                    amountSpecified: -0.1 ether,
+                    amountSpecified: -0.05 ether,
                     sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
                 }),
                 settings,
@@ -106,47 +123,45 @@ contract FeesCollected is Test, Deployers {
             );
         }
 
-        MockERC20 token0 = MockERC20(Currency.unwrap(currency0));
-        MockERC20 token1 = MockERC20(Currency.unwrap(currency1));
+        (, int24 newTick, , ) = manager.getSlot0(key.toId());
+        console.log("Current tick after swaps:", newTick);
 
-        uint256 contractToken0Balance = token0.balanceOf(address(hook));
-        uint256 contractToken1Balance = token1.balanceOf(address(hook));
+        uint128 afterSwapInRangeLiquidity = hook.inRangeLiquidity();
+        uint128 afterSwapOutRangeLiquidity = hook.outRangeLiquidity();
 
-        console.log("Hook's token0 balance:", contractToken0Balance);
-        console.log("Hook's token1 balance:", contractToken1Balance);
-    }
-
-    function test_simpleClaimFees() public {
-        PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
-            takeClaims: false,
-            settleUsingBurn: false
-        });
-
-        for (uint i = 0; i < 3; i++) {
-            swapRouter.swap(
-                key,
-                IPoolManager.SwapParams({
-                    zeroForOne: true,
-                    amountSpecified: -0.1 ether,
-                    sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
-                }),
-                settings,
-                ZERO_BYTES
-            );
-        }
-
-        MockERC20 token0 = MockERC20(Currency.unwrap(currency0));
-        uint256 userBalanceBefore = token0.balanceOf(address(this));
-
-        hook.claimFees(currency0);
-
-        uint256 userBalanceAfter = token0.balanceOf(address(this));
-
-        assertGt(
-            userBalanceAfter,
-            userBalanceBefore,
-            "User did not receive any fees"
+        console.log(
+            "After swaps - in-range liquidity:",
+            afterSwapInRangeLiquidity
         );
-        console.log("Fees claimed:", userBalanceAfter - userBalanceBefore);
+        console.log(
+            "After swaps - out-range liquidity:",
+            afterSwapOutRangeLiquidity
+        );
+
+        bool positionMovedOutOfRange = (afterSwapInRangeLiquidity <
+            startInRangeLiquidity);
+        bool outRangeLiquidityIncreased = (afterSwapOutRangeLiquidity >
+            startOutRangeLiquidity);
+
+        assertTrue(
+            positionMovedOutOfRange,
+            "Position should have moved out of range"
+        );
+        assertTrue(
+            outRangeLiquidityIncreased,
+            "Out-range liquidity should have increased"
+        );
+
+        assertEq(
+            afterSwapInRangeLiquidity,
+            500 ether,
+            "In-range liquidity should be equal to Position 2 size"
+        );
+
+        assertEq(
+            afterSwapOutRangeLiquidity,
+            1300 ether,
+            "Out-range liquidity should include Position 1 and 3"
+        );
     }
 }

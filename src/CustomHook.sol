@@ -231,7 +231,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
 
                 inRangeUsers[i] = inRangeUsers[inRangeUsers.length - 1];
                 inRangeUsers.pop();
-                i--;
             }
         }
 
@@ -250,7 +249,6 @@ contract CustomHook is BaseHook, FearAndGreedIndexConsumer {
 
                 outRangeUsers[i] = outRangeUsers[outRangeUsers.length - 1];
                 outRangeUsers.pop();
-                i--;
             }
         }
         return (this.afterSwap.selector, 0);

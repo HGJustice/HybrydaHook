@@ -26,6 +26,16 @@ Secondly for the users who are out of range there is also a fee accumulation met
 
 This feature aims to tackle the concept of 'dead capital' introduced by concentrated liquidity dexes, and generate user fees even though out of range. Hopefully improving the LPs chances of rebalancing remembering the inRange methodology is more capital efficient.
 
+## Tests
+
+There are 3 test files which test different features of my hook:
+
+1. DynamicFees.t.sol tests the Fee Rate for the inRange users using the Fear and Greed index, the test is a mock of what would happen when the CoinMarketCap API is called to get the current FnG index, to accomplish this we use the 'vm.store' cheat code, to change the state variable to see how it affects the FnG fee algorithm.
+
+2. FeesCollected.t.sol is for assessing if the hook is collecting fees via the beforeSwapDelta. It does this by first by simulating a few swaps going both ways to accumulate both tokens. Then we test the claimFees function for the outRange users and to see if the mapping accounting of everyone's share of the fees works accordingly.
+
+3. TrackingPositions.t.sol file is for assessing wherever the positions are tracked in the hook correctly. It tests the add/remove liquidity functions and also assesses positions after swap, to see if the in/out range tracking mechanism works correctly.
+
 ## Future Roadmap
 
 For the future roadmap I would like to keep building this hook and continue working on my hook slowly getting it ready for an audit. I would also like to consider using Arbitrum Stylus as there's a lot of gas intensive features in my hook contract, also that is something I didn't have the chance of attempting during this cohort because of time and personal responsibilities.
@@ -46,3 +56,9 @@ forge build
 # Run tests
 forge test
 ```
+
+## Links
+
+1. Presentation Slides: https://www.canva.com/design/DAGgVZV_gfM/nx37V1cF1Qg4XaFElQmrAg/edit?utm_content=DAGgVZV_gfM&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
+
+2. Demo:
