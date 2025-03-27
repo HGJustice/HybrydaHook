@@ -34,11 +34,13 @@ There are 3 test files which test different features of my hook:
 
 2. FeesCollected.t.sol is for assessing if the hook is collecting fees via the beforeSwapDelta. It does this by first by simulating a few swaps going both ways to accumulate both tokens. Then we test the claimFees function for the outRange users and to see if the mapping accounting of everyone's share of the fees works accordingly.
 
-3. TrackingPositions.t.sol file is for assessing wherever the positions are tracked in the hook correctly. It tests the add/remove liquidity functions and also assesses positions after swap, to see if the in/out range tracking mechanism works correctly.
+3. TrackingPositions.t.sol file is for assessing wherever the positions are tracked in the hook correctly. It tests the add/remove liquidity functions.
+
+4. AfterSwap.t.sol test file is dedicated to test the afterSwap function. This is an important test as after each swap it should track and reccently reorder users who fell out of range, and users who fell into range.
 
 ## Future Roadmap
 
-For the future roadmap I would like to keep building this hook and continue working on my hook slowly getting it ready for an audit. I would also like to consider using Arbitrum Stylus as there's a lot of gas intensive features in my hook contract, also that is something I didn't have the chance of attempting during this cohort because of time and personal responsibilities.
+For the future roadmap I would like to keep building this hook, I would need to learn how to backtest hooks on data to see and where my hook can be imporoved, continue working on my hook slowly getting it ready for an audit. I would also like to consider using Arbitrum Stylus as there's a lot of gas intensive features in my hook contract also that is something I didn't have the chance of attempting during this cohort because of time and personal responsibilities.
 
 ## Installation
 
