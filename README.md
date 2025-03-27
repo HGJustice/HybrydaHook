@@ -26,6 +26,10 @@ Secondly for the users who are out of range there is also a fee accumulation met
 
 This feature aims to tackle the concept of 'dead capital' introduced by concentrated liquidity dexes, and generate user fees even though out of range. Hopefully improving the LPs chances of rebalancing remembering the inRange methodology is more capital efficient.
 
+### Flow Diagram
+
+![Hybryrda Hook Flow Diagram](./flow-diagram.png)
+
 ## Tests
 
 There are 3 test files which test different features of my hook:

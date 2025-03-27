@@ -59,7 +59,7 @@ contract TrackingPositionsTest is Test, Deployers {
             tokenCurrency,
             hook,
             LPFeeLibrary.DYNAMIC_FEE_FLAG,
-            SQRT_PRICE_1_1 // 1 for 1 ratio of both coins in pool
+            SQRT_PRICE_1_1
         );
     }
 
@@ -160,16 +160,15 @@ contract TrackingPositionsTest is Test, Deployers {
         assertEq(nonce, 0, "Nonce should be 0");
         assertEq(inRange, true, "Position should be in range");
 
-        // remove half of liquiduty
         uint128 liquidityToRemove = liquidityDelta / 2;
-        uint256 initialEthBalance = address(this).balance; // check user balance before removing
+        uint256 initialEthBalance = address(this).balance;
 
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
                 tickUpper: 60,
-                liquidityDelta: -int256(uint256(liquidityToRemove)), // Negative for removal
+                liquidityDelta: -int256(uint256(liquidityToRemove)),
                 salt: bytes32(0)
             }),
             removeHookData
