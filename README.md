@@ -28,7 +28,7 @@ This feature aims to tackle the concept of 'dead capital' introduced by concentr
 
 ### Flow Diagram
 
-![Hybryrda Hook Flow Diagram](./flow-diagram.png)
+![Hybryrda Hook Flow Diagram](./flow-diagram.svg)
 
 ## Tests
 
