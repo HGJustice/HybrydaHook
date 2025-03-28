@@ -79,6 +79,7 @@ contract DynamicFeesTest is Test, Deployers {
 
         // Extreme fear (15)
         uint256 balanceOfToken1Before = currency1.balanceOfSelf();
+
         swapRouter.swap(
             key,
             IPoolManager.SwapParams({

@@ -32,15 +32,15 @@ This feature aims to tackle the concept of 'dead capital' introduced by concentr
 
 ## Tests
 
-There are 3 test files which test different features of my hook:
+There are 4 test files which test different features of my hook:
 
 1. DynamicFees.t.sol tests the Fee Rate for the inRange users using the Fear and Greed index, the test is a mock of what would happen when the CoinMarketCap API is called to get the current FnG index, to accomplish this we use the 'vm.store' cheat code, to change the state variable to see how it affects the FnG fee algorithm.
 
 2. FeesCollected.t.sol is for assessing if the hook is collecting fees via the beforeSwapDelta. It does this by first by simulating a few swaps going both ways to accumulate both tokens. Then we test the claimFees function for the outRange users and to see if the mapping accounting of everyone's share of the fees works accordingly.
 
-3. TrackingPositions.t.sol file is for assessing wherever the positions are tracked in the hook correctly. It tests the add/remove liquidity functions.
+3. TrackingPositions.t.sol file is for assessing wherever the positions are tracked in the hook correctly when liquidity is added.
 
-4. AfterSwap.t.sol test file is dedicated to test the afterSwap function. This is an important test as after each swap it should track and reccently reorder users who fell out of range, and users who fell into range.
+4. AfterSwap.t.sol test file is dedicated to test the afterSwap function. This is an important test as after each swap it should track and reorder users/liquidity which fell out of range, and vice versa.
 
 ## Future Roadmap
 
@@ -67,4 +67,4 @@ forge test
 
 1. Presentation Slides: https://www.canva.com/design/DAGgVZV_gfM/nx37V1cF1Qg4XaFElQmrAg/edit?utm_content=DAGgVZV_gfM&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
 
-2. Demo:
+2. Submission Demo: https://youtu.be/7OCn_TaYFLU
